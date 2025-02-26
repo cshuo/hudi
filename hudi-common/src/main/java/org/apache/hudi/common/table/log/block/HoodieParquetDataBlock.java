@@ -73,8 +73,7 @@ public class HoodieParquetDataBlock extends HoodieDataBlock {
                                 String keyField,
                                 String compressionCodecName,
                                 double expectedCompressionRatio,
-                                boolean useDictionaryEncoding
-  ) {
+                                boolean useDictionaryEncoding) {
     super(records, header, new HashMap<>(), keyField);
 
     this.compressionCodecName = Option.of(compressionCodecName);
@@ -98,7 +97,13 @@ public class HoodieParquetDataBlock extends HoodieDataBlock {
 
     return HoodieIOFactory.getIOFactory(storage).getFileFormatUtils(PARQUET)
         .serializeRecordsToLogBlock(
-            storage, records, writerSchema, getSchema(), getKeyFieldName(), paramsMap);
+            storage,
+            records,
+            writerSchema,
+            getSchema(),
+            getKeyFieldName(),
+            paramsMap,
+            columnMeta -> recordsStats = Option.of(columnMeta));
   }
 
   /**

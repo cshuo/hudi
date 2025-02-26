@@ -26,6 +26,7 @@ import org.apache.hudi.common.model.HoodieColumnRangeMetadata;
 import org.apache.hudi.common.model.HoodieFileFormat;
 import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieRecord;
+import org.apache.hudi.common.table.log.block.HoodieDataBlock;
 import org.apache.hudi.common.util.collection.ClosableIterator;
 import org.apache.hudi.common.util.collection.Pair;
 import org.apache.hudi.exception.HoodieException;
@@ -323,7 +324,8 @@ public abstract class FileFormatUtils {
                                                     List<HoodieRecord> records,
                                                     Schema writerSchema,
                                                     Schema readerSchema, String keyFieldName,
-                                                    Map<String, String> paramsMap) throws IOException;
+                                                    Map<String, String> paramsMap,
+                                                    HoodieDataBlock.BlockColumnMetaCollector columnMetaCollector) throws IOException;
 
   // -------------------------------------------------------------------------
   //  Inner Class

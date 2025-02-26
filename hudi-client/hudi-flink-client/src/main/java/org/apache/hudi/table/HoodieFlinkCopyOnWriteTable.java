@@ -45,6 +45,7 @@ import org.apache.hudi.io.HoodieCreateHandle;
 import org.apache.hudi.io.HoodieMergeHandle;
 import org.apache.hudi.io.HoodieMergeHandleFactory;
 import org.apache.hudi.io.HoodieWriteHandle;
+import org.apache.hudi.io.v2.FlinkWriteHandle;
 import org.apache.hudi.keygen.BaseKeyGenerator;
 import org.apache.hudi.keygen.factory.HoodieAvroKeyGeneratorFactory;
 import org.apache.hudi.metadata.MetadataPartitionType;
@@ -111,6 +112,11 @@ public class HoodieFlinkCopyOnWriteTable<T>
       String instantTime,
       List<HoodieRecord<T>> records) {
     return new FlinkUpsertCommitActionExecutor<>(context, writeHandle, config, this, instantTime, records).execute();
+  }
+
+  @Override
+  public List<WriteStatus> upsert(HoodieEngineContext context, FlinkWriteHandle<?, ?, ?, ?> writeHandle, String instantTime, Iterator<HoodieRecord> records) {
+    throw new UnsupportedOperationException("Unsupported yet.");
   }
 
   /**

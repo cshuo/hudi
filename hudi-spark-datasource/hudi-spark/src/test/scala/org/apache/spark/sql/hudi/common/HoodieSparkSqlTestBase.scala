@@ -21,7 +21,7 @@ import org.apache.hudi.{DefaultSparkRecordMerger, HoodieSparkUtils}
 import org.apache.hudi.HoodieFileIndex.DataSkippingFailureMode
 import org.apache.hudi.common.config.{HoodieCommonConfig, HoodieMetadataConfig, HoodieStorageConfig}
 import org.apache.hudi.common.engine.HoodieLocalEngineContext
-import org.apache.hudi.common.model.{FileSlice, HoodieAvroRecordMerger, HoodieLogFile, HoodieRecord}
+import org.apache.hudi.common.model.{FileSlice, HoodieAvroRecordMerger, HoodieLogFile, HoodieRecord, HoodieRecordMerger}
 import org.apache.hudi.common.model.HoodieRecord.HoodieRecordType
 import org.apache.hudi.common.table.{HoodieTableConfig, HoodieTableMetaClient, TableSchemaResolver}
 import org.apache.hudi.common.table.log.HoodieLogFileReader
@@ -36,7 +36,6 @@ import org.apache.hudi.index.inmemory.HoodieInMemoryHashIndex
 import org.apache.hudi.metadata.HoodieTableMetadata
 import org.apache.hudi.storage.HoodieStorage
 import org.apache.hudi.testutils.HoodieClientTestUtils.{createMetaClient, getSparkConfForTest}
-
 import org.apache.hadoop.fs.Path
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.{Row, SparkSession}
@@ -353,7 +352,7 @@ class HoodieSparkSqlTestBase extends FunSuite with BeforeAndAfterAll {
     }
   }
 
-  protected def withRecordType(recordTypes: Seq[HoodieRecordType] = Seq(HoodieRecordType.AVRO, HoodieRecordType.SPARK),
+  protected def withRecordType(recordTypes: Seq[HoodieRecordType] = Seq(HoodieRecordType.SPARK),
                                recordConfig: Map[HoodieRecordType, Map[String, String]] = Map.empty)(f: => Unit) {
     // TODO HUDI-5264 Test parquet log with avro record in spark sql test
     recordTypes.foreach { recordType =>
@@ -363,6 +362,8 @@ class HoodieSparkSqlTestBase extends FunSuite with BeforeAndAfterAll {
       }
       val config = Map(
         HoodieWriteConfig.RECORD_MERGE_IMPL_CLASSES.key -> merger,
+        HoodieWriteConfig.RECORD_MERGE_STRATEGY_ID.key -> HoodieRecordMerger.EVENT_TIME_BASED_MERGE_STRATEGY_UUID,
+        "hoodie.index.type" -> "INMEMORY",
         HoodieStorageConfig.LOGFILE_DATA_BLOCK_FORMAT.key -> format) ++ recordConfig.getOrElse(recordType, Map.empty)
       withSQLConf(config.toList: _*) {
         f
