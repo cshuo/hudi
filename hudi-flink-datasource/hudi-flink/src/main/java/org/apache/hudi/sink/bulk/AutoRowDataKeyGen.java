@@ -41,7 +41,8 @@ public class AutoRowDataKeyGen extends RowDataKeyGen {
       RowType rowType,
       boolean hiveStylePartitioning,
       boolean encodePartitionPath) {
-    super(Option.empty(), partitionFields, rowType, hiveStylePartitioning, encodePartitionPath, false, Option.empty());
+    super(Option.empty(), Option.empty(), partitionFields, rowType,
+        hiveStylePartitioning, encodePartitionPath, false, Option.empty());
     this.taskId = taskId;
     this.instantTime = instantTime;
   }

@@ -19,6 +19,7 @@
 package org.apache.hudi.common.table.log.block;
 
 import org.apache.hudi.common.engine.HoodieReaderContext;
+import org.apache.hudi.common.model.HoodieColumnRangeMetadata;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieRecord.HoodieRecordType;
 import org.apache.hudi.common.util.Option;
@@ -32,6 +33,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -69,6 +71,11 @@ public abstract class HoodieDataBlock extends HoodieLogBlock {
   private final boolean enablePointLookups;
 
   protected Schema readerSchema;
+
+  /**
+   * Column stats for the written records.
+   */
+  protected Option<Map<String, HoodieColumnRangeMetadata<Comparable>>> recordsStats = Option.empty();
 
   //  Map of string schema to parsed schema.
   private static final ConcurrentHashMap<String, Schema> SCHEMA_MAP = new ConcurrentHashMap<>();
@@ -329,6 +336,10 @@ public abstract class HoodieDataBlock extends HoodieLogBlock {
 
   protected abstract <T> ClosableIterator<HoodieRecord<T>> deserializeRecords(byte[] content, HoodieRecordType type) throws IOException;
 
+  public Map<String, HoodieColumnRangeMetadata<Comparable>> getRecordStats() {
+    return this.recordsStats.orElse(Collections.emptyMap());
+  }
+
   /**
    * Streaming deserialization of records.
    *
@@ -454,6 +465,17 @@ public abstract class HoodieDataBlock extends HoodieLogBlock {
     public HoodieRecord<T> next() {
       return this.next;
     }
+  }
+
+  /**
+   * todo
+   */
+  public interface BlockColumnMetaCollector {
+    /**
+     * todo
+     * @param columnMeta
+     */
+    void collectColumnMeta(Map<String, HoodieColumnRangeMetadata<Comparable>> columnMeta);
   }
 
   /**

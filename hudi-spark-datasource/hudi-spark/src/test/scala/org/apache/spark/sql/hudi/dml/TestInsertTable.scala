@@ -301,7 +301,7 @@ class TestInsertTable extends HoodieSparkSqlTestBase {
            |  price double,
            |  ts long
            |) using hudi
-           | tblproperties (primaryKey = 'id')
+           | tblproperties (primaryKey = 'id', 'type' = 'mor')
            | partitioned by (dt)
            | location '${tmp.getCanonicalPath}'
        """.stripMargin)

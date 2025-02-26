@@ -23,6 +23,7 @@ import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.StringUtils;
 import org.apache.hudi.configuration.FlinkOptions;
 import org.apache.hudi.configuration.OptionsResolver;
+import org.apache.hudi.exception.HoodieException;
 import org.apache.hudi.exception.HoodieKeyException;
 import org.apache.hudi.keygen.TimestampBasedAvroKeyGenerator;
 import org.apache.hudi.util.RowDataProjection;
@@ -60,6 +61,7 @@ public class RowDataKeyGen implements Serializable {
 
   private final String[] recordKeyFields;
   private final String[] partitionPathFields;
+  private final String preCombineField;
 
   private final RowDataProjection recordKeyProjection;
   private final RowDataProjection partitionPathProjection;
@@ -74,6 +76,8 @@ public class RowDataKeyGen implements Serializable {
   private boolean simpleRecordKey = false;
   private RowData.FieldGetter recordKeyFieldGetter;
 
+  private RowData.FieldGetter preCombineFieldGetter;
+
   private boolean simplePartitionPath = false;
   private RowData.FieldGetter partitionPathFieldGetter;
 
@@ -81,6 +85,7 @@ public class RowDataKeyGen implements Serializable {
 
   protected RowDataKeyGen(
       Option<String> recordKeys,
+      Option<String> preCombineField,
       String partitionFields,
       RowType rowType,
       boolean hiveStylePartitioning,
@@ -111,6 +116,14 @@ public class RowDataKeyGen implements Serializable {
       }
     }
 
+    if (preCombineField.isPresent()) {
+      this.preCombineField = preCombineField.get();
+      int preCombineFieldIdx = fieldNames.indexOf(this.preCombineField);
+      this.preCombineFieldGetter = RowData.createFieldGetter(fieldTypes.get(preCombineFieldIdx), preCombineFieldIdx);
+    } else {
+      this.preCombineField = null;
+    }
+
     if (this.partitionPathFields.length == 1) {
       // efficient code path
       if (this.partitionPathFields[0].equals("")) {
@@ -137,9 +150,15 @@ public class RowDataKeyGen implements Serializable {
       }
     }
     boolean consistentLogicalTimestampEnabled = OptionsResolver.isConsistentLogicalTimestampEnabled(conf);
-    return new RowDataKeyGen(Option.of(conf.getString(FlinkOptions.RECORD_KEY_FIELD)), conf.getString(FlinkOptions.PARTITION_PATH_FIELD),
-        rowType, conf.getBoolean(FlinkOptions.HIVE_STYLE_PARTITIONING), conf.getBoolean(FlinkOptions.URL_ENCODE_PARTITIONING),
-        consistentLogicalTimestampEnabled, keyGeneratorOpt);
+    return new RowDataKeyGen(
+        Option.of(conf.getString(FlinkOptions.RECORD_KEY_FIELD)),
+        Option.of(conf.getString(FlinkOptions.PRECOMBINE_FIELD)),
+        conf.getString(FlinkOptions.PARTITION_PATH_FIELD),
+        rowType,
+        conf.getBoolean(FlinkOptions.HIVE_STYLE_PARTITIONING),
+        conf.getBoolean(FlinkOptions.URL_ENCODE_PARTITIONING),
+        consistentLogicalTimestampEnabled,
+        keyGeneratorOpt);
   }
 
   public HoodieKey getHoodieKey(RowData rowData) {
@@ -153,6 +172,13 @@ public class RowDataKeyGen implements Serializable {
       Object[] keyValues = this.recordKeyProjection.projectAsValues(rowData);
       return getRecordKey(keyValues, this.recordKeyFields, consistentLogicalTimestampEnabled);
     }
+  }
+
+  public Comparable<?> getPreCombineValue(RowData rowData) {
+    if (preCombineField == null) {
+      throw new HoodieException("No preCombine field is defined.");
+    }
+    return (Comparable<?>) preCombineFieldGetter.getFieldOrNull(rowData);
   }
 
   public String getPartitionPath(RowData rowData) {

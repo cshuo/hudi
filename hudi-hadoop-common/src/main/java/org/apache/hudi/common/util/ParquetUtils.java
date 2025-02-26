@@ -26,11 +26,13 @@ import org.apache.hudi.common.model.HoodieColumnRangeMetadata;
 import org.apache.hudi.common.model.HoodieFileFormat;
 import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieRecord;
+import org.apache.hudi.common.table.log.block.HoodieDataBlock;
 import org.apache.hudi.common.util.collection.ClosableIterator;
 import org.apache.hudi.common.util.collection.CloseableMappingIterator;
 import org.apache.hudi.common.util.collection.Pair;
 import org.apache.hudi.exception.HoodieIOException;
 import org.apache.hudi.exception.MetadataNotFoundException;
+import org.apache.hudi.io.storage.HoodieColumnMetadataProvider;
 import org.apache.hudi.io.storage.HoodieFileWriter;
 import org.apache.hudi.io.storage.HoodieFileWriterFactory;
 import org.apache.hudi.keygen.BaseKeyGenerator;
@@ -267,35 +269,42 @@ public class ParquetUtils extends FileFormatUtils {
                                                                                  StoragePath filePath,
                                                                                  List<String> columnList) {
     ParquetMetadata metadata = readMetadata(storage, filePath);
+    return readColumnStatsFromMetadata(metadata, filePath.getName(), Option.of(columnList));
+  }
 
+  public List<HoodieColumnRangeMetadata<Comparable>> readColumnStatsFromMetadata(ParquetMetadata metadata, String filePath, Option<List<String>> columnList) {
     // Collect stats from all individual Parquet blocks
     Stream<HoodieColumnRangeMetadata<Comparable>> hoodieColumnRangeMetadataStream =
         metadata.getBlocks().stream().sequential().flatMap(blockMetaData ->
             blockMetaData.getColumns().stream()
-                    .filter(f -> columnList.contains(f.getPath().toDotString()))
-                    .map(columnChunkMetaData -> {
-                      Statistics stats = columnChunkMetaData.getStatistics();
-                      return (HoodieColumnRangeMetadata<Comparable>) HoodieColumnRangeMetadata.<Comparable>create(
-                          filePath.getName(),
-                          columnChunkMetaData.getPath().toDotString(),
-                          convertToNativeJavaType(
-                              columnChunkMetaData.getPrimitiveType(),
-                              stats.genericGetMin()),
-                          convertToNativeJavaType(
-                              columnChunkMetaData.getPrimitiveType(),
-                              stats.genericGetMax()),
-                          // NOTE: In case when column contains only nulls Parquet won't be creating
-                          //       stats for it instead returning stubbed (empty) object. In that case
-                          //       we have to equate number of nulls to the value count ourselves
-                          stats.isEmpty() ? columnChunkMetaData.getValueCount() : stats.getNumNulls(),
-                          columnChunkMetaData.getValueCount(),
-                          columnChunkMetaData.getTotalSize(),
-                          columnChunkMetaData.getTotalUncompressedSize());
-                    })
+                .filter(f -> !columnList.isPresent() || columnList.get().contains(f.getPath().toDotString()))
+                .map(columnChunkMetaData -> {
+                  Statistics stats = columnChunkMetaData.getStatistics();
+                  return (HoodieColumnRangeMetadata<Comparable>) HoodieColumnRangeMetadata.<Comparable>create(
+                      filePath,
+                      columnChunkMetaData.getPath().toDotString(),
+                      convertToNativeJavaType(
+                          columnChunkMetaData.getPrimitiveType(),
+                          stats.genericGetMin()),
+                      convertToNativeJavaType(
+                          columnChunkMetaData.getPrimitiveType(),
+                          stats.genericGetMax()),
+                      // NOTE: In case when column contains only nulls Parquet won't be creating
+                      //       stats for it instead returning stubbed (empty) object. In that case
+                      //       we have to equate number of nulls to the value count ourselves
+                      stats.isEmpty() ? columnChunkMetaData.getValueCount() : stats.getNumNulls(),
+                      columnChunkMetaData.getValueCount(),
+                      columnChunkMetaData.getTotalSize(),
+                      columnChunkMetaData.getTotalUncompressedSize());
+                })
         );
 
+    return mergeColumnStats(hoodieColumnRangeMetadataStream);
+  }
+
+  public List<HoodieColumnRangeMetadata<Comparable>> mergeColumnStats(Stream<HoodieColumnRangeMetadata<Comparable>> columnStats) {
     Map<String, List<HoodieColumnRangeMetadata<Comparable>>> columnToStatsListMap =
-        hoodieColumnRangeMetadataStream.collect(Collectors.groupingBy(HoodieColumnRangeMetadata::getColumnName));
+        columnStats.collect(Collectors.groupingBy(HoodieColumnRangeMetadata::getColumnName));
 
     // Combine those into file-level statistics
     // NOTE: Inlining this var makes javac (1.8) upset (due to its inability to infer
@@ -379,7 +388,8 @@ public class ParquetUtils extends FileFormatUtils {
                                            Schema writerSchema,
                                            Schema readerSchema,
                                            String keyFieldName,
-                                           Map<String, String> paramsMap) throws IOException {
+                                           Map<String, String> paramsMap,
+                                           HoodieDataBlock.BlockColumnMetaCollector columnMetaCollector) throws IOException {
     if (records.size() == 0) {
       return new byte[0];
     }
@@ -398,6 +408,12 @@ public class ParquetUtils extends FileFormatUtils {
         parquetWriter.write(recordKey, record, writerSchema);
       }
       outputStream.flush();
+      // collect column range metadata if necessary.
+      if (parquetWriter instanceof HoodieColumnMetadataProvider) {
+        HoodieColumnMetadataProvider columnMetadataProvider = (HoodieColumnMetadataProvider) parquetWriter;
+        columnMetadataProvider.finalizeWrite();
+        columnMetaCollector.collectColumnMeta(columnMetadataProvider.getColumnRangeMeta());
+      }
     }
     return outputStream.toByteArray();
   }
