@@ -75,7 +75,7 @@ public class RowDataBucket {
   }
 
   public void reset() {
-    this.buffer.dispose();
+    this.buffer.reset();
     this.detector.reset();
   }
 }

@@ -80,7 +80,7 @@ public abstract class FlinkWriteHandle<T, I, K, O> implements MiniBatchHandle, A
     this.partitionPath = partitionPath;
     this.taskContextSupplier = taskContextSupplier;
     this.writeSchema = getWriteSchema(config);
-    this.writeSchemaWithMetaFields = HoodieAvroUtils.addMetadataFields(writeSchema, config.allowOperationMetadataField());
+    this.writeSchemaWithMetaFields = HoodieAvroUtils.addMetadataFields(writeSchema, config.populateMetaFields(), config.allowOperationMetadataField());
     this.writeStatus = (WriteStatus) ReflectionUtils.loadClass(config.getWriteStatusClassName(),
         hoodieTable.shouldTrackSuccessRecords(), config.getWriteStatusFailureFraction());
     this.timer = HoodieTimer.start();
