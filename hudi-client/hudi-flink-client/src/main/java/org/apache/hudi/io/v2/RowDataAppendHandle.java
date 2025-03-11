@@ -115,6 +115,7 @@ public class RowDataAppendHandle<T, I, K, O> extends FlinkWriteHandle<T, I, K, O
    * Append data and delete blocks into log file.
    */
   public WriteStatus appendRowData(Iterator<RowData> recordIterator) {
+    initPartitionMeta();
     initWriteStatus();
     prepareRecords(recordIterator);
     try {

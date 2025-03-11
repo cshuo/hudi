@@ -23,6 +23,7 @@ import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.common.config.TypedProperties;
 import org.apache.hudi.common.engine.TaskContextSupplier;
 import org.apache.hudi.common.fs.FSUtils;
+import org.apache.hudi.common.model.HoodiePartitionMetadata;
 import org.apache.hudi.common.util.HoodieTimer;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.ReflectionUtils;
@@ -30,6 +31,7 @@ import org.apache.hudi.common.util.StringUtils;
 import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.io.MiniBatchHandle;
 import org.apache.hudi.storage.HoodieStorage;
+import org.apache.hudi.storage.StoragePath;
 import org.apache.hudi.table.HoodieTable;
 import org.apache.hudi.util.ConfigUtils;
 import org.apache.hudi.util.RowDataKeyGen;
@@ -101,6 +103,17 @@ public abstract class FlinkWriteHandle<T, I, K, O> implements MiniBatchHandle, A
 
   protected long getAttemptId() {
     return taskContextSupplier.getAttemptIdSupplier().get();
+  }
+
+  /**
+   * Save hoodie partition meta in the partition path.
+   */
+  protected void initPartitionMeta() {
+    HoodiePartitionMetadata partitionMetadata = new HoodiePartitionMetadata(storage, instantTime,
+        new StoragePath(config.getBasePath()),
+        FSUtils.constructAbsolutePath(config.getBasePath(), partitionPath),
+        hoodieTable.getPartitionMetafileFormat());
+    partitionMetadata.trySave();
   }
 
   @Override
