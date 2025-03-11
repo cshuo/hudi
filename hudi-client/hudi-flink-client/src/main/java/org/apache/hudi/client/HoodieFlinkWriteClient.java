@@ -54,6 +54,9 @@ import org.apache.hudi.table.upgrade.UpgradeDowngrade;
 import org.apache.hudi.util.WriteStatMerger;
 
 import com.codahale.metrics.Timer;
+import org.apache.flink.table.data.RowData;
+import org.apache.flink.table.types.logical.RowType;
+import org.apache.flink.types.Row;
 import org.apache.hadoop.fs.Path;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -157,12 +160,12 @@ public class HoodieFlinkWriteClient<T> extends
     return postWrite(result, instantTime, table);
   }
 
-  public List<WriteStatus> upsert(Iterator<HoodieRecord> records, BucketInfo bucketInfo, String instantTime) {
+  public List<WriteStatus> upsert(Iterator<RowData> records, RowType rowType, BucketInfo bucketInfo, String instantTime) {
     HoodieTable<T, List<HoodieRecord<T>>, List<HoodieKey>, List<WriteStatus>> table =
         initTable(WriteOperationType.UPSERT, Option.ofNullable(instantTime));
     table.validateUpsertSchema();
     preWrite(instantTime, WriteOperationType.UPSERT, table.getMetaClient());
-    try (FlinkWriteHandle<?, ?, ?, ?> writeHandle = getOrCreateRowDataHandle(bucketInfo, config, instantTime, table, false)) {
+    try (FlinkWriteHandle<?, ?, ?, ?> writeHandle = getOrCreateRowDataHandle(bucketInfo, rowType, config, instantTime, table, false)) {
       return ((HoodieFlinkTable<T>) table).upsert(context, writeHandle, instantTime, records);
     } catch (Exception e) {
       throw new HoodieException(String.format("Failed to close handle for bucket: %s, instant: %s.", bucketInfo, instantTime), e);
@@ -204,7 +207,7 @@ public class HoodieFlinkWriteClient<T> extends
     return postWrite(result, instantTime, table);
   }
 
-  public List<WriteStatus> insert(Iterator<HoodieRecord<T>> records, BucketInfo bucketInfo, String instantTime) {
+  public List<WriteStatus> insert(Iterator<HoodieRecord<T>> records, RowType rowType, BucketInfo bucketInfo, String instantTime) {
     return Collections.emptyList();
   }
 
@@ -229,7 +232,7 @@ public class HoodieFlinkWriteClient<T> extends
     return postWrite(result, instantTime, table);
   }
 
-  public List<WriteStatus> insertOverwrite(Iterator<HoodieRecord<T>> records, BucketInfo bucketInfo, String instantTime) {
+  public List<WriteStatus> insertOverwrite(Iterator<HoodieRecord<T>> records, RowType rowType, BucketInfo bucketInfo, String instantTime) {
     return Collections.emptyList();
   }
 
@@ -253,7 +256,7 @@ public class HoodieFlinkWriteClient<T> extends
     return postWrite(result, instantTime, table);
   }
 
-  public List<WriteStatus> insertOverwriteTable(Iterator<HoodieRecord<T>> records, BucketInfo bucketInfo, String instantTime) {
+  public List<WriteStatus> insertOverwriteTable(Iterator<HoodieRecord<T>> records, RowType rowType, BucketInfo bucketInfo, String instantTime) {
     return Collections.emptyList();
   }
 
@@ -490,6 +493,7 @@ public class HoodieFlinkWriteClient<T> extends
 
   private FlinkWriteHandle<?, ?, ?, ?> getOrCreateRowDataHandle(
       BucketInfo bucketInfo,
+      RowType rowType,
       HoodieWriteConfig config,
       String instantTime,
       HoodieTable<T, List<HoodieRecord<T>>, List<HoodieKey>, List<WriteStatus>> table,
@@ -498,7 +502,7 @@ public class HoodieFlinkWriteClient<T> extends
         List<HoodieRecord<T>>,
         List<HoodieKey>,
         List<WriteStatus>> rowDataHandleFactory = FlinkRowDataHandleFactory.getFactory(table.getMetaClient().getTableConfig(), config, overwrite);
-    return rowDataHandleFactory.create(this.bucketToHandles, bucketInfo, config, instantTime, table);
+    return rowDataHandleFactory.create(this.bucketToHandles, rowType, bucketInfo, config, instantTime, table);
   }
 
   public HoodieFlinkTable<T> getHoodieTable() {

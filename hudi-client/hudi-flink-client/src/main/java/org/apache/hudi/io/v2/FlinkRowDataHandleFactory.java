@@ -27,6 +27,7 @@ import org.apache.hudi.exception.HoodieException;
 import org.apache.hudi.table.HoodieTable;
 import org.apache.hudi.table.action.commit.BucketInfo;
 
+import org.apache.flink.table.types.logical.RowType;
 import org.apache.hadoop.fs.Path;
 
 import java.util.Iterator;
@@ -58,12 +59,14 @@ public class FlinkRowDataHandleFactory {
     @Override
     public FlinkWriteHandle<?, ?, ?, ?> create(
         Map<String, Path> bucketToHandles,
+        RowType rowType,
         BucketInfo bucketInfo,
         HoodieWriteConfig config,
         String instantTime,
         HoodieTable<T, I, K, O> table) {
       return new RowDataAppendHandle<>(
           config,
+          rowType,
           Option.of(instantTime),
           table,
           bucketInfo.getFileIdPrefix(),
@@ -92,6 +95,7 @@ public class FlinkRowDataHandleFactory {
      */
     FlinkWriteHandle<?, ?, ?, ?> create(
         Map<String, Path> bucketToHandles,
+        RowType rowType,
         BucketInfo bucketInfo,
         HoodieWriteConfig config,
         String instantTime,

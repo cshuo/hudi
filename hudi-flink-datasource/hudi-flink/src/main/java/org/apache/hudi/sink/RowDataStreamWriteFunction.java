@@ -18,20 +18,16 @@
 
 package org.apache.hudi.sink;
 
-import org.apache.hudi.client.FlinkTaskContextSupplier;
 import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.client.model.HoodieFlinkInternalRow;
-import org.apache.hudi.client.model.HoodieFlinkRecord;
-import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieOperation;
-import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieRecordMerger;
 import org.apache.hudi.common.model.WriteOperationType;
 import org.apache.hudi.common.util.HoodieRecordUtils;
 import org.apache.hudi.common.util.ValidationUtils;
+import org.apache.hudi.common.util.VisibleForTesting;
 import org.apache.hudi.common.util.collection.Pair;
 import org.apache.hudi.configuration.FlinkOptions;
-import org.apache.hudi.configuration.OptionsResolver;
 import org.apache.hudi.exception.HoodieException;
 import org.apache.hudi.metrics.FlinkStreamWriteMetrics;
 import org.apache.hudi.sink.buffer.MemorySegmentPoolFactory;
@@ -44,17 +40,14 @@ import org.apache.hudi.sink.utils.DummyNormalizedKeyComputer;
 import org.apache.hudi.sink.utils.DummyRecordComparator;
 import org.apache.hudi.table.action.commit.BucketInfo;
 import org.apache.hudi.table.action.commit.BucketType;
-import org.apache.hudi.util.MutableIteratorWrapper;
+import org.apache.hudi.util.MutableIteratorWrapperIterator;
 import org.apache.hudi.util.StreamerUtil;
 
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
-import org.apache.flink.table.data.GenericRowData;
 import org.apache.flink.table.data.RowData;
-import org.apache.flink.table.data.StringData;
 import org.apache.flink.table.data.binary.BinaryRowData;
-import org.apache.flink.table.data.utils.JoinedRowData;
 import org.apache.flink.table.runtime.generated.NormalizedKeyComputer;
 import org.apache.flink.table.runtime.generated.RecordComparator;
 import org.apache.flink.table.runtime.operators.sort.BinaryInMemorySortBuffer;
@@ -71,12 +64,12 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * todo
@@ -110,9 +103,7 @@ public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<Hood
   protected transient FlinkStreamWriteMetrics writeMetrics;
 
   protected transient MemorySegmentPool memorySegmentPool;
-  private FlinkTaskContextSupplier taskContextSupplier;
 
-  private static final AtomicLong RECORD_COUNTER = new AtomicLong(1);
   /**
    * Constructs a StreamingSinkFunction.
    *
@@ -127,7 +118,6 @@ public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<Hood
   @Override
   public void open(Configuration parameters) throws IOException {
     this.tracer = new TotalSizeTracer(this.config);
-    this.taskContextSupplier = new FlinkTaskContextSupplier(getRuntimeContext());
     initBuffer();
     initWriteFunction();
     initMergeClass();
@@ -169,15 +159,16 @@ public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<Hood
   // -------------------------------------------------------------------------
   //  Getter/Setter
   // -------------------------------------------------------------------------
-//  @VisibleForTesting
-//  @SuppressWarnings("rawtypes")
-//  public Map<String, List<HoodieRecord>> getDataBuffer() {
-//    Map<String, List<HoodieRecord>> ret = new HashMap<>();
-//    for (Map.Entry<String, DataBucket> entry : buckets.entrySet()) {
-//      ret.put(entry.getKey(), convertToHoodieRecords(entry.getValue().getRecords()));
-//    }
-//    return ret;
-//  }
+
+  @VisibleForTesting
+  @SuppressWarnings("rawtypes")
+  public Map<String, Iterator<BinaryRowData>> getDataBuffer() {
+    Map<String, Iterator<BinaryRowData>> ret = new HashMap<>();
+    for (Map.Entry<String, RowDataBucket> entry : buckets.entrySet()) {
+      ret.put(entry.getKey(), new MutableIteratorWrapperIterator<>(entry.getValue().getRecordIterator(), () -> new BinaryRowData(rowType.getFieldCount())));
+    }
+    return ret;
+  }
 
   // -------------------------------------------------------------------------
   //  Utilities
@@ -192,18 +183,18 @@ public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<Hood
     final String writeOperation = this.config.get(FlinkOptions.OPERATION);
     switch (WriteOperationType.fromValue(writeOperation)) {
       case INSERT:
-        this.writeFunction = (records, bucketInfo, instantTime) -> this.writeClient.insert(records, bucketInfo, instantTime);
+        this.writeFunction = (records, bucketInfo, instantTime) -> this.writeClient.insert(records, rowType, bucketInfo, instantTime);
         break;
       case UPSERT:
       case DELETE: // shares the code path with UPSERT
       case DELETE_PREPPED:
-        this.writeFunction = (records, bucketInfo, instantTime) -> this.writeClient.upsert(records, bucketInfo, instantTime);
+        this.writeFunction = (records, bucketInfo, instantTime) -> this.writeClient.upsert(records, rowType, bucketInfo, instantTime);
         break;
       case INSERT_OVERWRITE:
-        this.writeFunction = (records, bucketInfo, instantTime) -> this.writeClient.insertOverwrite(records, bucketInfo, instantTime);
+        this.writeFunction = (records, bucketInfo, instantTime) -> this.writeClient.insertOverwrite(records, rowType, bucketInfo, instantTime);
         break;
       case INSERT_OVERWRITE_TABLE:
-        this.writeFunction = (records, bucketInfo, instantTime) -> this.writeClient.insertOverwriteTable(records, bucketInfo, instantTime);
+        this.writeFunction = (records, bucketInfo, instantTime) -> this.writeClient.insertOverwriteTable(records, rowType, bucketInfo, instantTime);
         break;
       default:
         throw new RuntimeException("Unsupported write operation : " + writeOperation);
@@ -388,12 +379,10 @@ public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<Hood
       String instant,
       RowDataBucket rowDataBucket) {
     writeMetrics.startFileFlush();
-    Iterator<HoodieRecord> recordItr =
-        new MutableIteratorWrapper<>(
+    Iterator<BinaryRowData> recordItr =
+        new MutableIteratorWrapperIterator<>(
             rowDataBucket.getRecordIterator(),
-            instant,
-            () -> new BinaryRowData(rowType.getFieldCount()),
-            (binaryRowData, instantTime) -> convertToRecord(binaryRowData, rowDataBucket.getBucketInfo(), instantTime));
+            () -> new BinaryRowData(rowType.getFieldCount()));
 
     List<WriteStatus> statuses = writeFunction.write(deduplicateRecordsIfNeeded(recordItr), rowDataBucket.getBucketInfo(), instant);
     writeMetrics.endFileFlush();
@@ -401,38 +390,7 @@ public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<Hood
     return statuses;
   }
 
-  protected HoodieFlinkRecord convertToRecord(RowData dataRow, BucketInfo bucketInfo, String instant) {
-    boolean isPopulateMetaFields = OptionsResolver.isPopulateMetaFields(config);
-    boolean allowOperationMetadataField = config.get(FlinkOptions.CHANGELOG_ENABLED);
-    String key = keyGen.getRecordKey(dataRow);
-    Comparable<?> preCombineValue = keyGen.getPreCombineValue(dataRow);
-    HoodieOperation operation = HoodieOperation.fromValue(dataRow.getRowKind().toByteValue());
-    HoodieKey hoodieKey = new HoodieKey(key, bucketInfo.getPartitionPath());
-    if (!isPopulateMetaFields && !allowOperationMetadataField) {
-      return new HoodieFlinkRecord(hoodieKey, operation, preCombineValue, dataRow);
-    }
-
-    int metaArity = (isPopulateMetaFields ? 5 : 0) + (allowOperationMetadataField ? 1 : 0);
-    GenericRowData metaRow = new GenericRowData(metaArity);
-    if (isPopulateMetaFields) {
-      String seqId = HoodieRecord.generateSequenceId(instant, getTaskId(), RECORD_COUNTER.getAndIncrement());
-      metaRow.setField(0, StringData.fromString(instant));
-      metaRow.setField(1, StringData.fromString(seqId));
-      metaRow.setField(2, StringData.fromString(key));
-      metaRow.setField(3, StringData.fromString((bucketInfo.getPartitionPath())));
-      metaRow.setField(4, StringData.fromString((bucketInfo.getFileIdPrefix())));
-    }
-    if (allowOperationMetadataField) {
-      metaRow.setField(5, HoodieOperation.fromValue(dataRow.getRowKind().toByteValue()).getName());
-    }
-    return new HoodieFlinkRecord(hoodieKey, operation, preCombineValue, new JoinedRowData(dataRow.getRowKind(), metaRow, dataRow));
-  }
-
-  protected int getTaskId() {
-    return this.taskContextSupplier.getPartitionIdSupplier().get();
-  }
-
-  protected Iterator<HoodieRecord> deduplicateRecordsIfNeeded(Iterator<HoodieRecord> records) {
+  protected Iterator<BinaryRowData> deduplicateRecordsIfNeeded(Iterator<BinaryRowData> records) {
     if (config.get(FlinkOptions.PRE_COMBINE)) {
       // todo: sort by record key, lazy merge during iterating, default for COW.
       return records;
@@ -442,6 +400,6 @@ public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<Hood
   }
 
   private interface WriteFunction {
-    List<WriteStatus> write(Iterator<HoodieRecord> records, BucketInfo bucketInfo, String instant);
+    List<WriteStatus> write(Iterator<BinaryRowData> records, BucketInfo bucketInfo, String instant);
   }
 }

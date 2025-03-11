@@ -68,6 +68,7 @@ import org.apache.hudi.table.action.commit.FlinkUpsertPreppedCommitActionExecuto
 import org.apache.hudi.table.action.rollback.BaseRollbackPlanActionExecutor;
 import org.apache.hudi.table.action.rollback.CopyOnWriteRollbackActionExecutor;
 
+import org.apache.flink.table.data.RowData;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -115,7 +116,38 @@ public class HoodieFlinkCopyOnWriteTable<T>
   }
 
   @Override
-  public List<WriteStatus> upsert(HoodieEngineContext context, FlinkWriteHandle<?, ?, ?, ?> writeHandle, String instantTime, Iterator<HoodieRecord> records) {
+  public List<WriteStatus> upsert(
+      HoodieEngineContext context,
+      FlinkWriteHandle<?, ?, ?, ?> writeHandle,
+      String instantTime,
+      Iterator<RowData> records) {
+    throw new UnsupportedOperationException("Unsupported yet.");
+  }
+
+  @Override
+  public List<WriteStatus> insert(
+      HoodieEngineContext context,
+      FlinkWriteHandle<?, ?, ?, ?> writeHandle,
+      String instantTime,
+      Iterator<RowData> records) {
+    throw new UnsupportedOperationException("Unsupported yet.");
+  }
+
+  @Override
+  public List<WriteStatus> insertOverwrite(
+      HoodieEngineContext context,
+      FlinkWriteHandle<?, ?, ?, ?> writeHandle,
+      String instantTime,
+      Iterator<RowData> records) {
+    throw new UnsupportedOperationException("Unsupported yet.");
+  }
+
+  @Override
+  public List<WriteStatus> insertOverwriteTable(
+      HoodieEngineContext context,
+      FlinkWriteHandle<?, ?, ?, ?> writeHandle,
+      String instantTime,
+      Iterator<RowData> records) {
     throw new UnsupportedOperationException("Unsupported yet.");
   }
 

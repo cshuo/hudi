@@ -45,6 +45,8 @@ import org.apache.hudi.table.action.compact.ScheduleCompactionActionExecutor;
 import org.apache.hudi.table.action.rollback.BaseRollbackPlanActionExecutor;
 import org.apache.hudi.table.action.rollback.MergeOnReadRollbackActionExecutor;
 
+import org.apache.flink.table.data.RowData;
+
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
@@ -80,11 +82,11 @@ public class HoodieFlinkMergeOnReadTable<T>
       HoodieEngineContext context,
       FlinkWriteHandle<?, ?, ?, ?> writeHandle,
       String instantTime,
-      Iterator<HoodieRecord> records) {
+      Iterator<RowData> records) {
     ValidationUtils.checkArgument(writeHandle instanceof RowDataAppendHandle,
         "MOR write handle should always be a RowDataAppendHandle");
     RowDataAppendHandle<?, ?, ?, ?> rowDataAppendHandle = (RowDataAppendHandle<?, ?, ?, ?>) writeHandle;
-    return Collections.singletonList(rowDataAppendHandle.appendRecords(records));
+    return Collections.singletonList(rowDataAppendHandle.appendRowData(records));
   }
 
   @Override

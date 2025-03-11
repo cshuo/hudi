@@ -20,11 +20,13 @@ package org.apache.hudi.io.v2;
 
 import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.client.WriteStatus;
+import org.apache.hudi.client.model.HoodieFlinkRecord;
 import org.apache.hudi.common.engine.TaskContextSupplier;
 import org.apache.hudi.common.fs.FSUtils;
 import org.apache.hudi.common.model.DeleteRecord;
 import org.apache.hudi.common.model.HoodieColumnRangeMetadata;
 import org.apache.hudi.common.model.HoodieDeltaWriteStat;
+import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieLogFile;
 import org.apache.hudi.common.model.HoodieOperation;
 import org.apache.hudi.common.model.HoodieRecord;
@@ -52,6 +54,11 @@ import org.apache.hudi.table.marker.WriteMarkersFactory;
 import org.apache.hudi.util.Lazy;
 
 import org.apache.avro.Schema;
+import org.apache.flink.table.data.GenericRowData;
+import org.apache.flink.table.data.RowData;
+import org.apache.flink.table.data.StringData;
+import org.apache.flink.table.data.utils.JoinedRowData;
+import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.util.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,6 +71,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 import static org.apache.hudi.metadata.HoodieTableMetadataUtil.collectColumnRangeMetadata;
@@ -73,6 +81,7 @@ import static org.apache.hudi.metadata.HoodieTableMetadataUtil.collectColumnRang
  */
 public class RowDataAppendHandle<T, I, K, O> extends FlinkWriteHandle<T, I, K, O> {
   private static final Logger LOG = LoggerFactory.getLogger(RowDataAppendHandle.class);
+  private static final AtomicLong RECORD_COUNTER = new AtomicLong(1);
 
   private HoodieLogFormat.Writer writer;
   // Buffer for holding records (to be deleted), along with their position in log block, in memory before they are flushed to disk
@@ -92,19 +101,20 @@ public class RowDataAppendHandle<T, I, K, O> extends FlinkWriteHandle<T, I, K, O
 
   public RowDataAppendHandle(
       HoodieWriteConfig config,
+      RowType rowType,
       Option<String> instantTime,
       HoodieTable<T, I, K, O> hoodieTable,
       String fileId,
       String partitionPath,
       TaskContextSupplier taskContextSupplier) {
-    super(config, instantTime, hoodieTable, fileId, partitionPath, taskContextSupplier);
+    super(config, rowType, instantTime, hoodieTable, fileId, partitionPath, taskContextSupplier);
     this.writer = createLogWriter(this.instantTime, null);
   }
 
   /**
    * Append data and delete blocks into log file.
    */
-  public WriteStatus appendRecords(Iterator<HoodieRecord> recordIterator) {
+  public WriteStatus appendRowData(Iterator<RowData> recordIterator) {
     initWriteStatus();
     prepareRecords(recordIterator);
     try {
@@ -143,9 +153,9 @@ public class RowDataAppendHandle<T, I, K, O> extends FlinkWriteHandle<T, I, K, O
     this.writeStatus.setStat(deltaWriteStat);
   }
 
-  private void prepareRecords(Iterator<HoodieRecord> recordIterator) {
+  private void prepareRecords(Iterator<RowData> recordIterator) {
     while (recordIterator.hasNext()) {
-      HoodieRecord record = recordIterator.next();
+      HoodieRecord record = convertToRecord(recordIterator.next());
       if (!partitionPath.equals(record.getPartitionPath())) {
         HoodieUpsertException failureEx = new HoodieUpsertException("mismatched partition path, record partition: "
             + record.getPartitionPath() + " but trying to insert into partition: " + partitionPath);
@@ -197,6 +207,33 @@ public class RowDataAppendHandle<T, I, K, O> extends FlinkWriteHandle<T, I, K, O
     assert stat.getRuntimeStats() != null;
     LOG.info("AppendHandle for partitionPath {} filePath {}, took {} ms.",
         partitionPath, stat.getPath(), stat.getRuntimeStats().getTotalUpsertTime());
+  }
+
+  protected HoodieFlinkRecord convertToRecord(RowData dataRow) {
+    boolean isPopulateMetaFields = config.populateMetaFields();
+    boolean allowOperationMetadataField = config.allowOperationMetadataField();
+    String key = rowDataKeyGen.getRecordKey(dataRow);
+    Comparable<?> preCombineValue = rowDataKeyGen.getPreCombineValue(dataRow);
+    HoodieOperation operation = HoodieOperation.fromValue(dataRow.getRowKind().toByteValue());
+    HoodieKey hoodieKey = new HoodieKey(key, partitionPath);
+    if (!isPopulateMetaFields && !allowOperationMetadataField) {
+      return new HoodieFlinkRecord(hoodieKey, operation, preCombineValue, dataRow);
+    }
+
+    int metaArity = (isPopulateMetaFields ? 5 : 0) + (allowOperationMetadataField ? 1 : 0);
+    GenericRowData metaRow = new GenericRowData(metaArity);
+    if (isPopulateMetaFields) {
+      String seqId = HoodieRecord.generateSequenceId(instantTime, getPartitionId(), RECORD_COUNTER.getAndIncrement());
+      metaRow.setField(0, StringData.fromString(instantTime));
+      metaRow.setField(1, StringData.fromString(seqId));
+      metaRow.setField(2, StringData.fromString(key));
+      metaRow.setField(3, StringData.fromString((partitionPath)));
+      metaRow.setField(4, StringData.fromString(fileId));
+    }
+    if (allowOperationMetadataField) {
+      metaRow.setField(5, HoodieOperation.fromValue(dataRow.getRowKind().toByteValue()).getName());
+    }
+    return new HoodieFlinkRecord(hoodieKey, operation, preCombineValue, new JoinedRowData(dataRow.getRowKind(), metaRow, dataRow));
   }
 
   private void updateWriteStatus(HoodieDeltaWriteStat stat, AppendResult result) {

@@ -26,6 +26,8 @@ import org.apache.hudi.io.HoodieWriteHandle;
 import org.apache.hudi.io.v2.FlinkWriteHandle;
 import org.apache.hudi.table.action.HoodieWriteMetadata;
 
+import org.apache.flink.table.data.RowData;
+
 import java.util.Iterator;
 import java.util.List;
 
@@ -51,20 +53,6 @@ public interface ExplicitWriteHandleTable<T> {
       HoodieWriteHandle<?, ?, ?, ?> writeHandle,
       String instantTime,
       List<HoodieRecord<T>> records);
-
-  /**
-   * todo
-   * @param context
-   * @param writeHandle
-   * @param instantTime
-   * @param records
-   * @return
-   */
-  List<WriteStatus> upsert(
-      HoodieEngineContext context,
-      FlinkWriteHandle<?, ?, ?, ?> writeHandle,
-      String instantTime,
-      Iterator<HoodieRecord> records);
 
   /**
    * Insert a batch of new records into Hoodie table at the supplied instantTime.

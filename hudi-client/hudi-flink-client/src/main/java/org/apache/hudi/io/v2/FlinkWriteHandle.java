@@ -30,8 +30,10 @@ import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.io.MiniBatchHandle;
 import org.apache.hudi.storage.HoodieStorage;
 import org.apache.hudi.table.HoodieTable;
+import org.apache.hudi.util.RowDataKeyGen;
 
 import org.apache.avro.Schema;
+import org.apache.flink.table.types.logical.RowType;
 
 /**
  * todo add doc
@@ -47,11 +49,13 @@ public abstract class FlinkWriteHandle<T, I, K, O> implements MiniBatchHandle, A
   protected final Schema writeSchema;
   protected final Schema writeSchemaWithMetaFields;
   protected final TaskContextSupplier taskContextSupplier;
+  protected final RowDataKeyGen rowDataKeyGen;
   protected WriteStatus writeStatus;
   protected HoodieTimer timer;
 
   public FlinkWriteHandle(
       HoodieWriteConfig config,
+      RowType rowType,
       Option<String> instantTime,
       HoodieTable<T, I, K, O> hoodieTable,
       String fileId,
@@ -70,6 +74,7 @@ public abstract class FlinkWriteHandle<T, I, K, O> implements MiniBatchHandle, A
         hoodieTable.shouldTrackSuccessRecords(), config.getWriteStatusFailureFraction());
     this.timer = HoodieTimer.start();
     this.writeToken = FSUtils.makeWriteToken(getPartitionId(), getStageId(), getAttemptId());
+    this.rowDataKeyGen = RowDataKeyGen.instance(config.getProps(), rowType);
   }
 
   private static Schema getWriteSchema(HoodieWriteConfig config) {
