@@ -178,7 +178,12 @@ public class RowDataKeyGen implements Serializable {
     if (preCombineField == null) {
       throw new HoodieException("No preCombine field is defined.");
     }
-    return (Comparable<?>) preCombineFieldGetter.getFieldOrNull(rowData);
+    Object val = preCombineFieldGetter.getFieldOrNull(rowData);
+    if (val instanceof TimestampData) {
+      return ((TimestampData) val).toInstant().toEpochMilli();
+    } else {
+      return (Comparable<?>) val;
+    }
   }
 
   public String getPartitionPath(RowData rowData) {

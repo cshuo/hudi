@@ -62,6 +62,7 @@ import org.apache.flink.table.runtime.typeutils.BinaryRowDataSerializer;
 import org.apache.flink.table.runtime.typeutils.RowDataSerializer;
 import org.apache.flink.table.runtime.util.MemorySegmentPool;
 import org.apache.flink.table.types.logical.RowType;
+import org.apache.flink.types.RowKind;
 import org.apache.flink.util.Collector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -241,6 +242,10 @@ public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<Hood
             createBucketBuffer(),
             getBucketInfo(record),
             this.config.get(FlinkOptions.WRITE_BATCH_SIZE)));
+
+    // set operation type into rowkind of row.
+    record.getRowData().setRowKind(
+        RowKind.fromByteValue(HoodieOperation.fromName(record.getOperationType()).getValue()));
 
     boolean success = bucket.writeRow(record.getRowData());
     // buffer is full.
