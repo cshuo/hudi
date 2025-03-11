@@ -55,11 +55,6 @@ public class HoodieFlinkRecord extends HoodieRecord<RowData> {
   }
 
   @Override
-  public String getPartitionPath() {
-    return getData().getString(HoodieRecord.PARTITION_PATH_META_FIELD_ORD).toString();
-  }
-
-  @Override
   public HoodieOperation getOperation() {
     return HoodieOperation.fromValue(getData().getRowKind().toByteValue());
   }
@@ -76,7 +71,7 @@ public class HoodieFlinkRecord extends HoodieRecord<RowData> {
 
   @Override
   public String getRecordKey(Schema recordSchema, String keyFieldName) {
-    return getData().getString(HoodieRecord.RECORD_KEY_META_FIELD_ORD).toString();
+    return getRecordKey();
   }
 
   @Override

@@ -223,7 +223,7 @@ public class ITTestHoodieDataSource {
 
     List<Row> rows3 = execSelectSql(streamTableEnv,
         "select * from t1/*+options('read.start-commit'='earliest')*/", 10);
-    assertEquals(2, rows3.size());
+    assertEquals(8, rows3.size());
   }
 
   @ParameterizedTest
