@@ -20,6 +20,7 @@ package org.apache.hudi.io.v2;
 
 import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.client.WriteStatus;
+import org.apache.hudi.common.config.HoodieStorageConfig;
 import org.apache.hudi.common.config.TypedProperties;
 import org.apache.hudi.common.engine.TaskContextSupplier;
 import org.apache.hudi.common.fs.FSUtils;
@@ -31,6 +32,7 @@ import org.apache.hudi.common.util.StringUtils;
 import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.io.MiniBatchHandle;
 import org.apache.hudi.storage.HoodieStorage;
+import org.apache.hudi.storage.StorageConfiguration;
 import org.apache.hudi.storage.StoragePath;
 import org.apache.hudi.table.HoodieTable;
 import org.apache.hudi.util.ConfigUtils;
@@ -87,6 +89,13 @@ public abstract class FlinkWriteHandle<T, I, K, O> implements MiniBatchHandle, A
     this.writeToken = FSUtils.makeWriteToken(getPartitionId(), getStageId(), getAttemptId());
     this.rowDataKeyGen = RowDataKeyGen.instance(config.getProps(), rowType);
     this.preCombineFieldExtractor = getPreCombineFieldExtractor(config.getProps(), rowType);
+    initWriteConf(storage.getConf(), config);
+  }
+
+  private void initWriteConf(StorageConfiguration<?> storageConf, HoodieWriteConfig writeConfig) {
+    storageConf.set(
+        HoodieStorageConfig.PARQUET_WRITE_UTC_TIMEZONE.key(),
+        writeConfig.getString(HoodieStorageConfig.PARQUET_WRITE_UTC_TIMEZONE.key()));
   }
 
   private static Schema getWriteSchema(HoodieWriteConfig config) {
