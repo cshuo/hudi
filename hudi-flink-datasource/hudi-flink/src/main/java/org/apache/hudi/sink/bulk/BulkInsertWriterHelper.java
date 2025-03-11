@@ -30,6 +30,9 @@ import org.apache.hudi.io.storage.row.HoodieRowDataCreateHandle;
 import org.apache.hudi.metrics.FlinkStreamWriteMetrics;
 import org.apache.hudi.table.HoodieTable;
 import org.apache.hudi.util.DataTypeUtils;
+import org.apache.hudi.util.RowDataKeyGen;
+import org.apache.hudi.util.RowDataKeyGens;
+import org.apache.hudi.util.StreamerUtil;
 
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.table.api.DataTypes;
@@ -112,7 +115,7 @@ public class BulkInsertWriterHelper {
     this.preserveHoodieMetadata = preserveHoodieMetadata;
     this.isInputSorted = OptionsResolver.isBulkInsertOperation(conf) && conf.getBoolean(FlinkOptions.WRITE_BULK_INSERT_SORT_INPUT);
     this.fileIdPrefix = UUID.randomUUID().toString();
-    this.keyGen = preserveHoodieMetadata ? null : RowDataKeyGens.instance(conf, rowType, taskPartitionId, instantTime);
+    this.keyGen = preserveHoodieMetadata? null : RowDataKeyGens.instance(StreamerUtil.flinkConf2TypedProperties(conf), rowType, taskPartitionId, instantTime);
     this.writeMetrics = writeMetrics;
   }
 

@@ -20,6 +20,7 @@ package org.apache.hudi.io.v2;
 
 import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.client.WriteStatus;
+import org.apache.hudi.common.config.TypedProperties;
 import org.apache.hudi.common.engine.TaskContextSupplier;
 import org.apache.hudi.common.fs.FSUtils;
 import org.apache.hudi.common.util.HoodieTimer;
@@ -30,10 +31,16 @@ import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.io.MiniBatchHandle;
 import org.apache.hudi.storage.HoodieStorage;
 import org.apache.hudi.table.HoodieTable;
+import org.apache.hudi.util.ConfigUtils;
 import org.apache.hudi.util.RowDataKeyGen;
 
 import org.apache.avro.Schema;
+import org.apache.flink.table.data.RowData;
+import org.apache.flink.table.data.TimestampData;
+import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.RowType;
+
+import java.util.List;
 
 /**
  * todo add doc
@@ -50,8 +57,10 @@ public abstract class FlinkWriteHandle<T, I, K, O> implements MiniBatchHandle, A
   protected final Schema writeSchemaWithMetaFields;
   protected final TaskContextSupplier taskContextSupplier;
   protected final RowDataKeyGen rowDataKeyGen;
+  protected final PreCombineFieldExtractor preCombineFieldExtractor;
   protected WriteStatus writeStatus;
   protected HoodieTimer timer;
+  public static final int DEFAULT_ORDERING_VALUE = 0;
 
   public FlinkWriteHandle(
       HoodieWriteConfig config,
@@ -75,6 +84,7 @@ public abstract class FlinkWriteHandle<T, I, K, O> implements MiniBatchHandle, A
     this.timer = HoodieTimer.start();
     this.writeToken = FSUtils.makeWriteToken(getPartitionId(), getStageId(), getAttemptId());
     this.rowDataKeyGen = RowDataKeyGen.instance(config.getProps(), rowType);
+    this.preCombineFieldExtractor = getPreCombineFieldExtractor(config.getProps(), rowType);
   }
 
   private static Schema getWriteSchema(HoodieWriteConfig config) {
@@ -96,5 +106,40 @@ public abstract class FlinkWriteHandle<T, I, K, O> implements MiniBatchHandle, A
   @Override
   public void close() throws Exception {
     this.closeGracefully();
+  }
+
+  /**
+   * todo add doc
+   *
+   * @param props
+   * @param rowType
+   * @return
+   */
+  private static PreCombineFieldExtractor getPreCombineFieldExtractor(TypedProperties props, RowType rowType) {
+    String preCombineField = ConfigUtils.getPreCombineField(props);
+    if (StringUtils.isNullOrEmpty(preCombineField)) {
+      // return a dummy extractor.
+      return rowData -> DEFAULT_ORDERING_VALUE;
+    }
+    List<String> fieldNames = rowType.getFieldNames();
+    List<LogicalType> fieldTypes = rowType.getChildren();
+    int preCombineFieldIdx = fieldNames.indexOf(preCombineField);
+    RowData.FieldGetter preCombineFieldGetter = RowData.createFieldGetter(fieldTypes.get(preCombineFieldIdx), preCombineFieldIdx);
+
+    return rowData -> {
+      Object orderVal = preCombineFieldGetter.getFieldOrNull(rowData);
+      if (orderVal instanceof TimestampData) {
+        return ((TimestampData) orderVal).toInstant().toEpochMilli();
+      } else {
+        return (Comparable<?>) orderVal;
+      }
+    };
+  }
+
+  /**
+   * todo add doc
+   */
+  public interface PreCombineFieldExtractor {
+    Comparable<?> getPreCombineField(RowData rowData);
   }
 }

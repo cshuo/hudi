@@ -213,7 +213,7 @@ public class RowDataAppendHandle<T, I, K, O> extends FlinkWriteHandle<T, I, K, O
     boolean isPopulateMetaFields = config.populateMetaFields();
     boolean allowOperationMetadataField = config.allowOperationMetadataField();
     String key = rowDataKeyGen.getRecordKey(dataRow);
-    Comparable<?> preCombineValue = rowDataKeyGen.getPreCombineValue(dataRow);
+    Comparable<?> preCombineValue = preCombineFieldExtractor.getPreCombineField(dataRow);
     HoodieOperation operation = HoodieOperation.fromValue(dataRow.getRowKind().toByteValue());
     HoodieKey hoodieKey = new HoodieKey(key, partitionPath);
     if (!isPopulateMetaFields && !allowOperationMetadataField) {

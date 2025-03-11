@@ -33,7 +33,6 @@ import org.apache.hudi.metrics.FlinkStreamWriteMetrics;
 import org.apache.hudi.sink.buffer.MemorySegmentPoolFactory;
 import org.apache.hudi.sink.buffer.RowDataBucket;
 import org.apache.hudi.sink.buffer.TotalSizeTracer;
-import org.apache.hudi.sink.bulk.RowDataKeyGen;
 import org.apache.hudi.sink.common.AbstractStreamWriteFunction;
 import org.apache.hudi.sink.event.WriteMetadataEvent;
 import org.apache.hudi.sink.utils.DummyNormalizedKeyComputer;
@@ -46,7 +45,6 @@ import org.apache.hudi.util.StreamerUtil;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
-import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.binary.BinaryRowData;
 import org.apache.flink.table.runtime.generated.NormalizedKeyComputer;
 import org.apache.flink.table.runtime.generated.RecordComparator;
@@ -90,7 +88,6 @@ public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<Hood
   private transient HoodieRecordMerger recordMerger;
 
   protected final RowType rowType;
-  protected final RowDataKeyGen keyGen;
 
   /**
    * Total size tracer.
@@ -112,7 +109,6 @@ public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<Hood
   public RowDataStreamWriteFunction(Configuration config, RowType rowType) {
     super(config);
     this.rowType = rowType;
-    this.keyGen = RowDataKeyGen.instance(config, rowType);
   }
 
   @Override

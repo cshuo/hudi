@@ -24,13 +24,15 @@ import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.storage.StoragePath;
 import org.apache.hudi.table.HoodieTable;
 
+import org.apache.flink.table.types.logical.RowType;
+
 /**
  * todo add doc
  */
 public class RowDataMergeAndReplaceHandle extends FlinkWriteHandle {
-  public RowDataMergeAndReplaceHandle(HoodieWriteConfig config, Option instantTime, HoodieTable hoodieTable, String fileId,
+  public RowDataMergeAndReplaceHandle(HoodieWriteConfig config, RowType rowType, Option instantTime, HoodieTable hoodieTable, String fileId,
                                       String partitionPath, TaskContextSupplier taskContextSupplier) {
-    super(config, instantTime, hoodieTable, fileId, partitionPath, taskContextSupplier);
+    super(config, rowType, instantTime, hoodieTable, fileId, partitionPath, taskContextSupplier);
   }
 
   @Override
