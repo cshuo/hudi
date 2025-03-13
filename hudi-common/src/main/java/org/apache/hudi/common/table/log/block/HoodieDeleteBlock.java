@@ -81,6 +81,11 @@ public class HoodieDeleteBlock extends HoodieLogBlock {
     this.recordsToDelete = recordsToDelete.stream().map(Pair::getLeft).toArray(DeleteRecord[]::new);
   }
 
+  public HoodieDeleteBlock(byte[] content,
+                           Map<HeaderMetadataType, String> header) {
+    this(Option.of(content), null, false, Option.empty(), header, new HashMap<>());
+  }
+
   public HoodieDeleteBlock(Option<byte[]> content, Supplier<SeekableDataInputStream> inputStreamSupplier, boolean readBlockLazily,
                            Option<HoodieLogBlockContentLocation> blockContentLocation, Map<HeaderMetadataType, String> header,
                            Map<FooterMetadataType, String> footer) {

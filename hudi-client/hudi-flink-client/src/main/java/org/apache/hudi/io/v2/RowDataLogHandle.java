@@ -18,8 +18,10 @@
 
 package org.apache.hudi.io.v2;
 
+import org.apache.hudi.avro.AvroSchemaCache;
 import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.client.WriteStatus;
+import org.apache.hudi.common.config.HoodieStorageConfig;
 import org.apache.hudi.common.engine.TaskContextSupplier;
 import org.apache.hudi.common.fs.FSUtils;
 import org.apache.hudi.common.model.DeleteRecord;
@@ -46,6 +48,7 @@ import org.apache.hudi.exception.HoodieUpsertException;
 import org.apache.hudi.io.HoodieWriteHandle;
 import org.apache.hudi.io.MiniBatchHandle;
 import org.apache.hudi.metadata.HoodieTableMetadataUtil;
+import org.apache.hudi.storage.StorageConfiguration;
 import org.apache.hudi.storage.StoragePath;
 import org.apache.hudi.table.HoodieTable;
 import org.apache.hudi.util.Lazy;
@@ -83,6 +86,7 @@ public class RowDataLogHandle<T, I, K, O> extends HoodieWriteHandle<T, I, K, O> 
   // Header metadata for a log block
   protected final Map<HoodieLogBlock.HeaderMetadataType, String> header = new HashMap<>();
   protected final List<HoodieRecord> recordList = new ArrayList<>();
+  protected final Schema logWriteSchema;
   // Total number of records written during appending
   protected long recordsWritten = 0;
   // Total number of records deleted during appending
@@ -101,7 +105,10 @@ public class RowDataLogHandle<T, I, K, O> extends HoodieWriteHandle<T, I, K, O> 
       String partitionPath,
       TaskContextSupplier taskContextSupplier) {
     super(config, instantTime, partitionPath, fileId, hoodieTable, taskContextSupplier);
+    initWriteConf(storage.getConf(), config);
     this.writer = createLogWriter(this.instantTime, null);
+    this.logWriteSchema = AvroSchemaCache.intern(
+        HoodieAvroUtils.addMetadataFields(writeSchema, config.populateMetaFields(), config.allowOperationMetadataField()));
   }
 
   /**
@@ -113,7 +120,7 @@ public class RowDataLogHandle<T, I, K, O> extends HoodieWriteHandle<T, I, K, O> 
     prepareRecords(recordIterator);
     try {
       header.put(HoodieLogBlock.HeaderMetadataType.INSTANT_TIME, instantTime);
-      header.put(HoodieLogBlock.HeaderMetadataType.SCHEMA, writeSchemaWithMetaFields.toString());
+      header.put(HoodieLogBlock.HeaderMetadataType.SCHEMA, logWriteSchema.toString());
       List<HoodieLogBlock> blocks = new ArrayList<>(2);
       if (!recordList.isEmpty()) {
         String keyField = config.populateMetaFields()
@@ -156,6 +163,12 @@ public class RowDataLogHandle<T, I, K, O> extends HoodieWriteHandle<T, I, K, O> 
         FSUtils.constructAbsolutePath(config.getBasePath(), partitionPath),
         hoodieTable.getPartitionMetafileFormat());
     partitionMetadata.trySave();
+  }
+
+  private void initWriteConf(StorageConfiguration<?> storageConf, HoodieWriteConfig writeConfig) {
+    storageConf.set(
+        HoodieStorageConfig.PARQUET_WRITE_UTC_TIMEZONE.key(),
+        writeConfig.getString(HoodieStorageConfig.PARQUET_WRITE_UTC_TIMEZONE.key()));
   }
 
   private void prepareRecords(Iterator<HoodieRecord> recordIterator) {

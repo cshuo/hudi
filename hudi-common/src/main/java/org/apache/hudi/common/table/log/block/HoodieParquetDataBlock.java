@@ -82,6 +82,19 @@ public class HoodieParquetDataBlock extends HoodieDataBlock {
     this.useDictionaryEncoding = Option.of(useDictionaryEncoding);
   }
 
+  public HoodieParquetDataBlock(byte[] content,
+                                Map<HeaderMetadataType, String> header,
+                                String keyField,
+                                String compressionCodecName,
+                                double expectedCompressionRatio,
+                                boolean useDictionaryEncoding) {
+    super(content, header, new HashMap<>(), keyField);
+
+    this.compressionCodecName = Option.of(compressionCodecName);
+    this.expectedCompressionRatio = Option.of(expectedCompressionRatio);
+    this.useDictionaryEncoding = Option.of(useDictionaryEncoding);
+  }
+
   @Override
   public HoodieLogBlockType getBlockType() {
     return HoodieLogBlockType.PARQUET_DATA_BLOCK;
