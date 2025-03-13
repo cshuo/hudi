@@ -23,6 +23,7 @@ import org.apache.hudi.common.table.HoodieTableConfig;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.exception.HoodieException;
+import org.apache.hudi.io.HoodieWriteHandle;
 import org.apache.hudi.table.HoodieTable;
 import org.apache.hudi.table.action.commit.BucketInfo;
 
@@ -58,17 +59,15 @@ public class FlinkRowDataHandleFactory {
     }
 
     @Override
-    public RowDataWriteHandle<?, ?, ?, ?> create(
+    public HoodieWriteHandle<?, ?, ?, ?> create(
         Map<String, Path> bucketToHandles,
-        RowType rowType,
         BucketInfo bucketInfo,
         HoodieWriteConfig config,
         String instantTime,
         HoodieTable<T, I, K, O> table) {
       return new RowDataLogHandle<>(
           config,
-          rowType,
-          Option.of(instantTime),
+          instantTime,
           table,
           bucketInfo.getFileIdPrefix(),
           bucketInfo.getPartitionPath(),
@@ -94,9 +93,8 @@ public class FlinkRowDataHandleFactory {
      *
      * @return Existing write handle or create a new one
      */
-    RowDataWriteHandle<?, ?, ?, ?> create(
+    HoodieWriteHandle<?, ?, ?, ?> create(
         Map<String, Path> bucketToHandles,
-        RowType rowType,
         BucketInfo bucketInfo,
         HoodieWriteConfig config,
         String instantTime,

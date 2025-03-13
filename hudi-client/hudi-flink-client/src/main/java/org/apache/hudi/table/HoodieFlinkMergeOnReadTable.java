@@ -34,7 +34,6 @@ import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.io.FlinkAppendHandle;
 import org.apache.hudi.io.HoodieAppendHandle;
 import org.apache.hudi.io.HoodieWriteHandle;
-import org.apache.hudi.io.v2.RowDataWriteHandle;
 import org.apache.hudi.io.v2.RowDataLogHandle;
 import org.apache.hudi.table.action.HoodieWriteMetadata;
 import org.apache.hudi.table.action.commit.delta.FlinkUpsertDeltaCommitActionExecutor;
@@ -44,8 +43,6 @@ import org.apache.hudi.table.action.compact.RunCompactionActionExecutor;
 import org.apache.hudi.table.action.compact.ScheduleCompactionActionExecutor;
 import org.apache.hudi.table.action.rollback.BaseRollbackPlanActionExecutor;
 import org.apache.hudi.table.action.rollback.MergeOnReadRollbackActionExecutor;
-
-import org.apache.flink.table.data.RowData;
 
 import java.util.Collections;
 import java.util.Iterator;
@@ -80,13 +77,13 @@ public class HoodieFlinkMergeOnReadTable<T>
   @Override
   public List<WriteStatus> upsert(
       HoodieEngineContext context,
-      RowDataWriteHandle<?, ?, ?, ?> writeHandle,
+      HoodieWriteHandle<?, ?, ?, ?> writeHandle,
       String instantTime,
-      Iterator<RowData> records) {
+      Iterator<HoodieRecord> records) {
     ValidationUtils.checkArgument(writeHandle instanceof RowDataLogHandle,
         "MOR RowData handle should always be a RowDataLogHandle");
-    RowDataLogHandle<?, ?, ?, ?> rowDataAppendHandle = (RowDataLogHandle<?, ?, ?, ?>) writeHandle;
-    return Collections.singletonList(rowDataAppendHandle.appendRowData(records));
+    RowDataLogHandle<?, ?, ?, ?> rowDataLogHandle = (RowDataLogHandle<?, ?, ?, ?>) writeHandle;
+    return Collections.singletonList(rowDataLogHandle.appendRowData(records));
   }
 
   @Override

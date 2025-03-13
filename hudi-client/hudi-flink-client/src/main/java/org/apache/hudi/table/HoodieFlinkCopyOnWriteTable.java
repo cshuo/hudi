@@ -45,7 +45,6 @@ import org.apache.hudi.io.HoodieCreateHandle;
 import org.apache.hudi.io.HoodieMergeHandle;
 import org.apache.hudi.io.HoodieMergeHandleFactory;
 import org.apache.hudi.io.HoodieWriteHandle;
-import org.apache.hudi.io.v2.RowDataWriteHandle;
 import org.apache.hudi.keygen.BaseKeyGenerator;
 import org.apache.hudi.keygen.factory.HoodieAvroKeyGeneratorFactory;
 import org.apache.hudi.metadata.MetadataPartitionType;
@@ -68,7 +67,6 @@ import org.apache.hudi.table.action.commit.FlinkUpsertPreppedCommitActionExecuto
 import org.apache.hudi.table.action.rollback.BaseRollbackPlanActionExecutor;
 import org.apache.hudi.table.action.rollback.CopyOnWriteRollbackActionExecutor;
 
-import org.apache.flink.table.data.RowData;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -118,36 +116,9 @@ public class HoodieFlinkCopyOnWriteTable<T>
   @Override
   public List<WriteStatus> upsert(
       HoodieEngineContext context,
-      RowDataWriteHandle<?, ?, ?, ?> writeHandle,
+      HoodieWriteHandle<?, ?, ?, ?> writeHandle,
       String instantTime,
-      Iterator<RowData> records) {
-    throw new UnsupportedOperationException("Unsupported yet.");
-  }
-
-  @Override
-  public List<WriteStatus> insert(
-      HoodieEngineContext context,
-      RowDataWriteHandle<?, ?, ?, ?> writeHandle,
-      String instantTime,
-      Iterator<RowData> records) {
-    throw new UnsupportedOperationException("Unsupported yet.");
-  }
-
-  @Override
-  public List<WriteStatus> insertOverwrite(
-      HoodieEngineContext context,
-      RowDataWriteHandle<?, ?, ?, ?> writeHandle,
-      String instantTime,
-      Iterator<RowData> records) {
-    throw new UnsupportedOperationException("Unsupported yet.");
-  }
-
-  @Override
-  public List<WriteStatus> insertOverwriteTable(
-      HoodieEngineContext context,
-      RowDataWriteHandle<?, ?, ?, ?> writeHandle,
-      String instantTime,
-      Iterator<RowData> records) {
+      Iterator<HoodieRecord> records) {
     throw new UnsupportedOperationException("Unsupported yet.");
   }
 
