@@ -235,7 +235,7 @@ public class RowDataLogHandle<T, I, K, O> extends RowDataWriteHandle<T, I, K, O>
       metaRow.setField(4, StringData.fromString(fileId));
     }
     if (allowOperationMetadataField) {
-      metaRow.setField(5, HoodieOperation.fromValue(dataRow.getRowKind().toByteValue()).getName());
+      metaRow.setField(5, StringData.fromString(HoodieOperation.fromValue(dataRow.getRowKind().toByteValue()).getName()));
     }
     return new HoodieFlinkRecord(hoodieKey, operation, preCombineValue, new JoinedRowData(dataRow.getRowKind(), metaRow, dataRow));
   }
