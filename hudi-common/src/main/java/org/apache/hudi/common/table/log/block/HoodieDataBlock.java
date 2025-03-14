@@ -100,13 +100,15 @@ public abstract class HoodieDataBlock extends HoodieLogBlock {
   public HoodieDataBlock(byte[] content,
                          Map<HeaderMetadataType, String> header,
                          Map<FooterMetadataType, String> footer,
-                         String keyFieldName) {
+                         String keyFieldName,
+                         Map<String, HoodieColumnRangeMetadata<Comparable>> recordColumnStats) {
     super(header, footer, Option.empty(), Option.of(content), null, false);
     this.records = Option.empty();
     this.keyFieldName = keyFieldName;
     // If no reader-schema has been provided assume writer-schema as one
     this.readerSchema = AvroSchemaCache.intern(getWriterSchema(super.getLogBlockHeader()));
     this.enablePointLookups = false;
+    this.recordColumnStats = Option.ofNullable(recordColumnStats);
   }
 
   /**

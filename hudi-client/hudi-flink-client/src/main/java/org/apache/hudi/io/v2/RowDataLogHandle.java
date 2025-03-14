@@ -30,20 +30,20 @@ import org.apache.hudi.common.model.HoodieDeltaWriteStat;
 import org.apache.hudi.common.model.HoodieLogFile;
 import org.apache.hudi.common.model.HoodiePartitionMetadata;
 import org.apache.hudi.common.model.HoodieRecord;
-import org.apache.hudi.common.model.HoodieRecordLocation;
 import org.apache.hudi.common.model.HoodieWriteStat;
 import org.apache.hudi.common.model.IOType;
 import org.apache.hudi.common.table.log.AppendResult;
+import org.apache.hudi.common.table.log.BlockBytesConverter;
+import org.apache.hudi.common.table.log.BlockBytesConverter.BlockContentSerializer;
 import org.apache.hudi.common.table.log.HoodieLogFormat;
 import org.apache.hudi.common.table.log.block.HoodieDeleteBlock;
 import org.apache.hudi.common.table.log.block.HoodieLogBlock;
+import org.apache.hudi.common.table.log.block.HoodieLogBlock.HoodieLogBlockType;
 import org.apache.hudi.common.table.log.block.HoodieParquetDataBlock;
 import org.apache.hudi.common.util.Option;
-import org.apache.hudi.common.util.collection.Pair;
 import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.exception.HoodieAppendException;
 import org.apache.hudi.exception.HoodieException;
-import org.apache.hudi.exception.HoodieUpsertException;
 import org.apache.hudi.io.HoodieWriteHandle;
 import org.apache.hudi.io.MiniBatchHandle;
 import org.apache.hudi.metadata.HoodieTableMetadataUtil;
@@ -53,11 +53,11 @@ import org.apache.hudi.table.HoodieTable;
 import org.apache.hudi.util.Lazy;
 
 import org.apache.avro.Schema;
-import org.apache.flink.table.data.RowData;
 import org.apache.flink.util.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -68,10 +68,18 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static org.apache.hudi.metadata.HoodieTableMetadataUtil.collectColumnRangeMetadata;
+import static org.apache.hudi.common.config.HoodieStorageConfig.PARQUET_COMPRESSION_CODEC_NAME;
+import static org.apache.hudi.common.config.HoodieStorageConfig.PARQUET_COMPRESSION_RATIO_FRACTION;
+import static org.apache.hudi.common.config.HoodieStorageConfig.PARQUET_DICTIONARY_ENABLED;
 
 /**
- * A write handle that supports creating a log file and write a list of {@link RowData}s.
+ * A write handle that supports creating a log file and writing records based on record Iterator.
+ * The difference with {@code FlinkAppendHandle} is:
+ *
+ * <p> 1. {@code RowDataLogHandle} do not convert RowData into Avro record before writing.
+ * <p> 2. {@code RowDataLogHandle} writes Parquet data block by default.
+ * <p> 3. {@code RowDataLogHandle} do not buffer data internally, but using record iterator to write
+ *        data block for more memory efficiency.
  *
  * <p>The back-up writer may roll over to a new log file if there already exists a log file for the
  * given file group and instant.
@@ -80,11 +88,8 @@ public class RowDataLogHandle<T, I, K, O> extends HoodieWriteHandle<T, I, K, O> 
   private static final Logger LOG = LoggerFactory.getLogger(RowDataLogHandle.class);
 
   private HoodieLogFormat.Writer writer;
-  // Buffer for holding records (to be deleted), along with their position in log block, in memory before they are flushed to disk
-  private final List<Pair<DeleteRecord, Long>> recordsToDeleteWithPositions = new ArrayList<>();
   // Header metadata for a log block
   protected final Map<HoodieLogBlock.HeaderMetadataType, String> header = new HashMap<>();
-  protected final List<HoodieRecord> recordList = new ArrayList<>();
   protected final Schema logWriteSchema;
   // Total number of records written during appending
   protected long recordsWritten = 0;
@@ -113,30 +118,27 @@ public class RowDataLogHandle<T, I, K, O> extends HoodieWriteHandle<T, I, K, O> 
   /**
    * Append data and delete blocks into log file.
    */
-  public WriteStatus appendRowData(HandleRecords recordIterator) {
+  public WriteStatus appendRowData(HandleRecords records) {
     initPartitionMeta();
     initWriteStatus();
-    prepareRecords(recordIterator);
     try {
       header.put(HoodieLogBlock.HeaderMetadataType.INSTANT_TIME, instantTime);
       header.put(HoodieLogBlock.HeaderMetadataType.SCHEMA, logWriteSchema.toString());
       List<HoodieLogBlock> blocks = new ArrayList<>(2);
-      if (!recordList.isEmpty()) {
+      if (records.getRecordItr().hasNext()) {
         String keyField = config.populateMetaFields()
             ? HoodieRecord.RECORD_KEY_METADATA_FIELD
             : hoodieTable.getMetaClient().getTableConfig().getRecordKeyFieldProp();
-        blocks.add(genDataBlock(config, getLogDataBlockFormat(), recordList, keyField, header));
+        blocks.add(genDataBlock(config, getLogDataBlockFormat(), records.getRecordItr(), keyField, header));
       }
 
-      if (!recordsToDeleteWithPositions.isEmpty()) {
-        blocks.add(new HoodieDeleteBlock(recordsToDeleteWithPositions, header));
+      if (records.getDeleteRecordItr().hasNext()) {
+        blocks.add(genDeleteBlock(records.getDeleteRecordItr(), header));
       }
 
       if (!blocks.isEmpty()) {
         AppendResult appendResult = writer.appendBlocks(blocks);
-        processAppendResult(appendResult, recordList);
-        recordList.clear();
-        recordsToDeleteWithPositions.clear();
+        processAppendResult(appendResult);
       }
     } catch (Exception e) {
       throw new HoodieAppendException("Failed while appending records to " + writer.getLogFile().getPath(), e);
@@ -170,25 +172,7 @@ public class RowDataLogHandle<T, I, K, O> extends HoodieWriteHandle<T, I, K, O> 
         writeConfig.getString(HoodieStorageConfig.PARQUET_WRITE_UTC_TIMEZONE.key()));
   }
 
-  private void prepareRecords(HandleRecords records) {
-    Iterator<HoodieRecord> recordIterator = records.getRecordItr();
-    while (recordIterator.hasNext()) {
-      HoodieRecord record = recordIterator.next();
-      if (!partitionPath.equals(record.getPartitionPath())) {
-        HoodieUpsertException failureEx = new HoodieUpsertException("mismatched partition path, record partition: "
-            + record.getPartitionPath() + " but trying to insert into partition: " + partitionPath);
-        writeStatus.markFailure(record, failureEx, Option.empty());
-        continue;
-      }
-      recordList.add(record);
-    }
-    Iterator<DeleteRecord> deleteRecordItr = records.getDeleteRecordItr();
-    while (deleteRecordItr.hasNext()) {
-      recordsToDeleteWithPositions.add(Pair.of(deleteRecordItr.next(), HoodieRecordLocation.INVALID_POSITION));
-    }
-  }
-
-  private void processAppendResult(AppendResult result, List<HoodieRecord> recordList) {
+  private void processAppendResult(AppendResult result) {
     HoodieDeltaWriteStat stat = (HoodieDeltaWriteStat) this.writeStatus.getStat();
 
     Preconditions.checkArgument(stat.getPath() == null, "Only one append are expected for " + this.getClass().getSimpleName());
@@ -202,15 +186,7 @@ public class RowDataLogHandle<T, I, K, O> extends HoodieWriteHandle<T, I, K, O> 
               config.getMetadataConfig(), Lazy.eagerly(Option.of(writeSchemaWithMetaFields)),
               Option.of(HoodieRecord.HoodieRecordType.FLINK)).keySet());
       if (result.getRecordsStats().isEmpty()) {
-        final List<Pair<String, Schema.Field>> fieldsToIndex = columnsToIndexSet.stream()
-            .map(fieldName -> HoodieAvroUtils.getSchemaForField(writeSchemaWithMetaFields, fieldName)).collect(Collectors.toList());
-        try {
-          Map<String, HoodieColumnRangeMetadata<Comparable>> columnRangeMetadataMap =
-              collectColumnRangeMetadata(recordList, fieldsToIndex, stat.getPath(), writeSchemaWithMetaFields);
-          stat.putRecordsStats(columnRangeMetadataMap);
-        } catch (HoodieException e) {
-          throw new HoodieAppendException("Failed to extract append result", e);
-        }
+        throw new UnsupportedOperationException("Do not support collecting column stats from records.");
       } else {
         Map<String, HoodieColumnRangeMetadata<Comparable>> columnRangeMetadataMap =
             result.getRecordsStats().entrySet().stream()
@@ -261,8 +237,8 @@ public class RowDataLogHandle<T, I, K, O> extends HoodieWriteHandle<T, I, K, O> 
     recordsDeleted = 0;
   }
 
-  private HoodieLogBlock.HoodieLogBlockType getLogDataBlockFormat() {
-    Option<HoodieLogBlock.HoodieLogBlockType> logBlockTypeOpt = config.getLogDataBlockFormat();
+  private HoodieLogBlockType getLogDataBlockFormat() {
+    Option<HoodieLogBlockType> logBlockTypeOpt = config.getLogDataBlockFormat();
     if (logBlockTypeOpt.isPresent()) {
       return logBlockTypeOpt.get();
     }
@@ -274,22 +250,57 @@ public class RowDataLogHandle<T, I, K, O> extends HoodieWriteHandle<T, I, K, O> 
     return IOType.CREATE;
   }
 
+  /**
+   * Build a delete log block based on the delete record iterator, and block header.
+   * Note: currently, flink do not support record merging based on record position.
+   *
+   * @param deleteRecordIterator delete record iterator used to build the delete block
+   * @param header header for the delete block
+   * @return delete block
+   */
+  private HoodieLogBlock genDeleteBlock(
+      Iterator<DeleteRecord> deleteRecordIterator,
+      Map<HoodieLogBlock.HeaderMetadataType, String> header) throws IOException {
+    BlockContentSerializer<DeleteRecord> deleteBlockSerializer = BlockBytesConverter.getDeleteBlockSerializer();
+    byte[] content = deleteBlockSerializer.serialize(deleteRecordIterator);
+    return new HoodieDeleteBlock(content, header);
+  }
+
+  /**
+   * Build a data block based on the hoodie record iterator, and block header.
+   * Note: currently, flink do not support record merging based on record position.
+   *
+   * @param writeConfig hoodie write config
+   * @param logDataBlockFormat type of the data block
+   * @param recordIterator hoodie record list used to build the data block
+   * @param keyField name of key field
+   * @param header header for the data block
+   * @return data block
+   */
   private HoodieLogBlock genDataBlock(
       HoodieWriteConfig writeConfig,
-      HoodieLogBlock.HoodieLogBlockType logDataBlockFormat,
-      List<HoodieRecord> records,
+      HoodieLogBlockType logDataBlockFormat,
+      Iterator<HoodieRecord> recordIterator,
       String keyField,
-      Map<HoodieLogBlock.HeaderMetadataType, String> header) {
-
+      Map<HoodieLogBlock.HeaderMetadataType, String> header) throws IOException {
     switch (logDataBlockFormat) {
       case PARQUET_DATA_BLOCK:
+        Map<String, String> paramsMap = new HashMap<>();
+        paramsMap.put(PARQUET_COMPRESSION_CODEC_NAME.key(), writeConfig.getParquetCompressionCodec());
+        paramsMap.put(PARQUET_COMPRESSION_RATIO_FRACTION.key(), String.valueOf(writeConfig.getParquetCompressionRatio()));
+        paramsMap.put(PARQUET_DICTIONARY_ENABLED.key(), String.valueOf(writeConfig.parquetDictionaryEnabled()));
+        BlockContentSerializer<HoodieRecord> blockContentSerializer =
+            BlockBytesConverter.getDataBlockSerializer(
+                HoodieLogBlockType.PARQUET_DATA_BLOCK, storage, HoodieRecord.HoodieRecordType.FLINK, logWriteSchema, logWriteSchema, keyField, paramsMap);
+        byte[] blockContent = blockContentSerializer.serialize(recordIterator);
         return new HoodieParquetDataBlock(
-            records,
+            blockContent,
             header,
             keyField,
             writeConfig.getParquetCompressionCodec(),
             writeConfig.getParquetCompressionRatio(),
-            writeConfig.parquetDictionaryEnabled());
+            writeConfig.parquetDictionaryEnabled(),
+            blockContentSerializer.getColumnStatsMeta());
       default:
         throw new HoodieException("Data block format " + logDataBlockFormat + " is not implemented for Flink RowData append handle.");
     }

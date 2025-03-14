@@ -71,6 +71,7 @@ import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -393,17 +394,31 @@ public class ParquetUtils extends FileFormatUtils {
     if (records.size() == 0) {
       return new byte[0];
     }
+    HoodieRecord.HoodieRecordType recordType = records.iterator().next().getRecordType();
+    return serializeRecordsToLogBlock(storage, records.iterator(),
+        recordType, writerSchema, readerSchema, keyFieldName, paramsMap, columnMetaCollector);
+  }
 
+  @Override
+  public byte[] serializeRecordsToLogBlock(HoodieStorage storage,
+                                           Iterator<HoodieRecord> recordItr,
+                                           HoodieRecord.HoodieRecordType recordType,
+                                           Schema writerSchema,
+                                           Schema readerSchema,
+                                           String keyFieldName,
+                                           Map<String, String> paramsMap,
+                                           HoodieDataBlock.BlockColumnMetaCollector columnMetaCollector) throws IOException {
     ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
     HoodieConfig config = new HoodieConfig();
     paramsMap.entrySet().stream().forEach(entry -> config.setValue(entry.getKey(), entry.getValue()));
     config.setValue(PARQUET_BLOCK_SIZE.key(), String.valueOf(ParquetWriter.DEFAULT_BLOCK_SIZE));
     config.setValue(PARQUET_PAGE_SIZE.key(), String.valueOf(ParquetWriter.DEFAULT_PAGE_SIZE));
     config.setValue(PARQUET_MAX_FILE_SIZE.key(), String.valueOf(1024 * 1024 * 1024));
-    HoodieRecord.HoodieRecordType recordType = records.iterator().next().getRecordType();
+
     try (HoodieFileWriter parquetWriter = HoodieFileWriterFactory.getFileWriter(
         HoodieFileFormat.PARQUET, outputStream, storage, config, writerSchema, recordType)) {
-      for (HoodieRecord<?> record : records) {
+      while (recordItr.hasNext()) {
+        HoodieRecord record = recordItr.next();
         String recordKey = record.getRecordKey(readerSchema, keyFieldName);
         parquetWriter.write(recordKey, record, writerSchema);
       }

@@ -20,6 +20,7 @@ package org.apache.hudi.common.table.log.block;
 
 import org.apache.hudi.avro.AvroSchemaCache;
 import org.apache.hudi.common.engine.HoodieReaderContext;
+import org.apache.hudi.common.model.HoodieColumnRangeMetadata;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieRecord.HoodieRecordType;
 import org.apache.hudi.common.util.Option;
@@ -87,8 +88,9 @@ public class HoodieParquetDataBlock extends HoodieDataBlock {
                                 String keyField,
                                 String compressionCodecName,
                                 double expectedCompressionRatio,
-                                boolean useDictionaryEncoding) {
-    super(content, header, new HashMap<>(), keyField);
+                                boolean useDictionaryEncoding,
+                                Map<String, HoodieColumnRangeMetadata<Comparable>> recordColumnStats) {
+    super(content, header, new HashMap<>(), keyField, recordColumnStats);
 
     this.compressionCodecName = Option.of(compressionCodecName);
     this.expectedCompressionRatio = Option.of(expectedCompressionRatio);

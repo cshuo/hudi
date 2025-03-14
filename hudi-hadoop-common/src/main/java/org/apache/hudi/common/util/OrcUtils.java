@@ -56,6 +56,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -314,6 +315,12 @@ public class OrcUtils extends FileFormatUtils {
                                            String keyFieldName,
                                            Map<String, String> paramsMap,
                                            HoodieDataBlock.BlockColumnMetaCollector columnMetaCollector) throws IOException {
+    throw new UnsupportedOperationException("Hudi log blocks do not support ORC format yet");
+  }
+
+  @Override
+  public byte[] serializeRecordsToLogBlock(HoodieStorage storage, Iterator<HoodieRecord> records, HoodieRecord.HoodieRecordType recordType, Schema writerSchema, Schema readerSchema,
+                                           String keyFieldName, Map<String, String> paramsMap, HoodieDataBlock.BlockColumnMetaCollector columnMetaCollector) throws IOException {
     throw new UnsupportedOperationException("Hudi log blocks do not support ORC format yet");
   }
 }

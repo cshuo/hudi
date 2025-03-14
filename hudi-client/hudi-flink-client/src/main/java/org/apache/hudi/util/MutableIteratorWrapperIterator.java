@@ -26,6 +26,11 @@ import java.io.IOException;
 import java.util.Iterator;
 import java.util.function.Supplier;
 
+/**
+ * An implement of {@link Iterator} with an inner {@link MutableObjectIterator} from Flink.
+ * `hasNext()` here is idempotent, so it's safe to be called multiple times before `next()`
+ * is called, for example, to check whether the iterator is empty before iterating.
+ */
 public class MutableIteratorWrapperIterator<T> implements Iterator<T> {
   private final MutableObjectIterator<T> innerItr;
   private final Supplier<T> rowSupplier;

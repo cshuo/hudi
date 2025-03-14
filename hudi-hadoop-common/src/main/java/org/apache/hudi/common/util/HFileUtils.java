@@ -234,6 +234,12 @@ public class HFileUtils extends FileFormatUtils {
     return baos.toByteArray();
   }
 
+  @Override
+  public byte[] serializeRecordsToLogBlock(HoodieStorage storage, Iterator<HoodieRecord> records, HoodieRecord.HoodieRecordType recordType, Schema writerSchema, Schema readerSchema,
+                                           String keyFieldName, Map<String, String> paramsMap, HoodieDataBlock.BlockColumnMetaCollector columnMetaCollector) throws IOException {
+    return new byte[0];
+  }
+
   private static Option<String> getRecordKey(HoodieRecord record, Schema readerSchema, String keyFieldName) {
     return Option.ofNullable(record.getRecordKey(readerSchema, keyFieldName));
   }
