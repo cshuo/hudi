@@ -28,7 +28,6 @@ import org.apache.hudi.common.model.DeleteRecord;
 import org.apache.hudi.common.model.HoodieColumnRangeMetadata;
 import org.apache.hudi.common.model.HoodieDeltaWriteStat;
 import org.apache.hudi.common.model.HoodieLogFile;
-import org.apache.hudi.common.model.HoodieOperation;
 import org.apache.hudi.common.model.HoodiePartitionMetadata;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieRecordLocation;
@@ -114,7 +113,7 @@ public class RowDataLogHandle<T, I, K, O> extends HoodieWriteHandle<T, I, K, O> 
   /**
    * Append data and delete blocks into log file.
    */
-  public WriteStatus appendRowData(Iterator<HoodieRecord> recordIterator) {
+  public WriteStatus appendRowData(HandleRecords recordIterator) {
     initPartitionMeta();
     initWriteStatus();
     prepareRecords(recordIterator);
@@ -171,7 +170,8 @@ public class RowDataLogHandle<T, I, K, O> extends HoodieWriteHandle<T, I, K, O> 
         writeConfig.getString(HoodieStorageConfig.PARQUET_WRITE_UTC_TIMEZONE.key()));
   }
 
-  private void prepareRecords(Iterator<HoodieRecord> recordIterator) {
+  private void prepareRecords(HandleRecords records) {
+    Iterator<HoodieRecord> recordIterator = records.getRecordItr();
     while (recordIterator.hasNext()) {
       HoodieRecord record = recordIterator.next();
       if (!partitionPath.equals(record.getPartitionPath())) {
@@ -180,13 +180,11 @@ public class RowDataLogHandle<T, I, K, O> extends HoodieWriteHandle<T, I, K, O> 
         writeStatus.markFailure(record, failureEx, Option.empty());
         continue;
       }
-      boolean isDelete = HoodieOperation.isDelete(record.getOperation()) && !config.allowOperationMetadataField();
-      if (isDelete) {
-        final Comparable<?> orderingVal = record.getOrderingValue(writeSchema, config.getProps());
-        recordsToDeleteWithPositions.add(Pair.of(DeleteRecord.create(record.getKey(), orderingVal), HoodieRecordLocation.INVALID_POSITION));
-      } else {
-        recordList.add(record);
-      }
+      recordList.add(record);
+    }
+    Iterator<DeleteRecord> deleteRecordItr = records.getDeleteRecordItr();
+    while (deleteRecordItr.hasNext()) {
+      recordsToDeleteWithPositions.add(Pair.of(deleteRecordItr.next(), HoodieRecordLocation.INVALID_POSITION));
     }
   }
 

@@ -42,6 +42,7 @@ import org.apache.hudi.io.FlinkWriteHandleFactory;
 import org.apache.hudi.io.HoodieWriteHandle;
 import org.apache.hudi.io.MiniBatchHandle;
 import org.apache.hudi.io.v2.FlinkRowDataHandleFactory;
+import org.apache.hudi.io.v2.HandleRecords;
 import org.apache.hudi.table.BulkInsertPartitioner;
 import org.apache.hudi.table.HoodieFlinkTable;
 import org.apache.hudi.table.HoodieTable;
@@ -155,7 +156,7 @@ public class HoodieFlinkWriteClient<T> extends
     return postWrite(result, instantTime, table);
   }
 
-  public List<WriteStatus> upsert(Iterator<HoodieRecord> records, BucketInfo bucketInfo, String instantTime) {
+  public List<WriteStatus> upsert(HandleRecords records, BucketInfo bucketInfo, String instantTime) {
     HoodieTable<T, List<HoodieRecord<T>>, List<HoodieKey>, List<WriteStatus>> table =
         initTable(WriteOperationType.UPSERT, Option.ofNullable(instantTime));
     table.validateUpsertSchema();
@@ -200,7 +201,7 @@ public class HoodieFlinkWriteClient<T> extends
     return postWrite(result, instantTime, table);
   }
 
-  public List<WriteStatus> insert(Iterator<HoodieRecord<T>> records, BucketInfo bucketInfo, String instantTime) {
+  public List<WriteStatus> insert(HandleRecords records, BucketInfo bucketInfo, String instantTime) {
     return Collections.emptyList();
   }
 
@@ -225,7 +226,7 @@ public class HoodieFlinkWriteClient<T> extends
     return postWrite(result, instantTime, table);
   }
 
-  public List<WriteStatus> insertOverwrite(Iterator<HoodieRecord<T>> records, BucketInfo bucketInfo, String instantTime) {
+  public List<WriteStatus> insertOverwrite(HandleRecords records, BucketInfo bucketInfo, String instantTime) {
     return Collections.emptyList();
   }
 
@@ -249,7 +250,7 @@ public class HoodieFlinkWriteClient<T> extends
     return postWrite(result, instantTime, table);
   }
 
-  public List<WriteStatus> insertOverwriteTable(Iterator<HoodieRecord<T>> records, BucketInfo bucketInfo, String instantTime) {
+  public List<WriteStatus> insertOverwriteTable(HandleRecords records, BucketInfo bucketInfo, String instantTime) {
     return Collections.emptyList();
   }
 

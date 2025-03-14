@@ -23,31 +23,59 @@ import org.apache.hudi.table.action.commit.BucketInfo;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.binary.BinaryRowData;
 import org.apache.flink.table.runtime.operators.sort.BinaryInMemorySortBuffer;
+import org.apache.flink.types.RowKind;
 import org.apache.flink.util.MutableObjectIterator;
 
 import java.io.IOException;
+import java.util.Optional;
 
+/**
+ * RowData buffer for a specific data bucket, and the buffer is based on {@code BinaryInMemorySortBuffer}
+ * from Flink, which is backed by a managed {@code MemorySegmentPool} to minimize GC influence.
+ *
+ * <p> We use
+ */
 public class RowDataBucket {
-  private final BinaryInMemorySortBuffer buffer;
+  private final BinaryInMemorySortBuffer dataBuffer;
+  private final Optional<BinaryInMemorySortBuffer> deleteDataBuffer;
   private final BucketInfo bucketInfo;
   private final BufferSizeDetector detector;
 
   public RowDataBucket(
-      BinaryInMemorySortBuffer buffer,
+      BinaryInMemorySortBuffer dataBuffer,
       BucketInfo bucketInfo,
       Double batchSize) {
-    this.buffer = buffer;
+    this(dataBuffer, null, bucketInfo, batchSize);
+  }
+
+  public RowDataBucket(
+      BinaryInMemorySortBuffer dataBuffer,
+      BinaryInMemorySortBuffer deleteDataBuffer,
+      BucketInfo bucketInfo,
+      Double batchSize) {
+    this.dataBuffer = dataBuffer;
+    this.deleteDataBuffer = Optional.ofNullable(deleteDataBuffer);
     this.bucketInfo = bucketInfo;
     this.detector = new BufferSizeDetector(batchSize);
   }
 
-  public MutableObjectIterator<BinaryRowData> getRecordIterator() {
+  public MutableObjectIterator<BinaryRowData> getDataIterator() {
     // todo perform sort if necessary
-    return buffer.getIterator();
+    return dataBuffer.getIterator();
+  }
+
+  public MutableObjectIterator<BinaryRowData> getDeleteDataIterator() {
+    // todo perform sort if necessary
+    return deleteDataBuffer.map(BinaryInMemorySortBuffer::getIterator).orElse(null);
   }
 
   public boolean writeRow(RowData rowData) throws IOException {
-    boolean success = this.buffer.write(rowData);
+    boolean success;
+    if (rowData.getRowKind() == RowKind.DELETE && deleteDataBuffer.isPresent()) {
+      success = deleteDataBuffer.get().write(rowData);
+    } else {
+      success = dataBuffer.write(rowData);
+    }
     if (success) {
       detector.detect(rowData);
     }
@@ -55,15 +83,15 @@ public class RowDataBucket {
   }
 
   public BucketInfo getBucketInfo() {
-    return this.bucketInfo;
+    return bucketInfo;
   }
 
   public long getBufferSize() {
-    return this.detector.totalSize;
+    return detector.totalSize;
   }
 
   public boolean isEmpty() {
-    return this.buffer.isEmpty();
+    return dataBuffer.isEmpty() && (!deleteDataBuffer.isPresent() || deleteDataBuffer.get().isEmpty());
   }
 
   public boolean isFull() {
@@ -75,7 +103,8 @@ public class RowDataBucket {
   }
 
   public void reset() {
-    this.buffer.reset();
-    this.detector.reset();
+    dataBuffer.reset();
+    deleteDataBuffer.ifPresent(BinaryInMemorySortBuffer::reset);
+    detector.reset();
   }
 }

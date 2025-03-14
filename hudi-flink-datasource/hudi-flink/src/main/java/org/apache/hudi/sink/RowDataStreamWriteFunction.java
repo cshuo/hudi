@@ -22,6 +22,7 @@ import org.apache.hudi.client.FlinkTaskContextSupplier;
 import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.client.model.HoodieFlinkInternalRow;
 import org.apache.hudi.client.model.HoodieFlinkRecord;
+import org.apache.hudi.common.model.DeleteRecord;
 import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieOperation;
 import org.apache.hudi.common.model.HoodieRecord;
@@ -36,6 +37,7 @@ import org.apache.hudi.common.util.collection.Pair;
 import org.apache.hudi.configuration.FlinkOptions;
 import org.apache.hudi.configuration.OptionsResolver;
 import org.apache.hudi.exception.HoodieException;
+import org.apache.hudi.io.v2.HandleRecords;
 import org.apache.hudi.metrics.FlinkStreamWriteMetrics;
 import org.apache.hudi.sink.buffer.MemorySegmentPoolFactory;
 import org.apache.hudi.sink.buffer.RowDataBucket;
@@ -188,7 +190,7 @@ public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<Hood
   public Map<String, Iterator<BinaryRowData>> getDataBuffer() {
     Map<String, Iterator<BinaryRowData>> ret = new HashMap<>();
     for (Map.Entry<String, RowDataBucket> entry : buckets.entrySet()) {
-      ret.put(entry.getKey(), new MutableIteratorWrapperIterator<>(entry.getValue().getRecordIterator(), () -> new BinaryRowData(rowType.getFieldCount())));
+      ret.put(entry.getKey(), new MutableIteratorWrapperIterator<>(entry.getValue().getDataIterator(), () -> new BinaryRowData(rowType.getFieldCount())));
     }
     return ret;
   }
@@ -257,7 +259,8 @@ public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<Hood
 
     RowDataBucket bucket = this.buckets.computeIfAbsent(bucketID,
         k -> new RowDataBucket(
-            createBucketBuffer(),
+            createBucketBuffer(false),
+            createBucketBuffer(true),
             getBucketInfo(record),
             this.config.get(FlinkOptions.WRITE_BATCH_SIZE)));
 
@@ -294,7 +297,12 @@ public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<Hood
     writeMetrics.setWriteBufferedSize(this.tracer.bufferSize);
   }
 
-  private BinaryInMemorySortBuffer createBucketBuffer() {
+  private BinaryInMemorySortBuffer createBucketBuffer(boolean forDelete) {
+    // for this case, all kind of rowdata are keeped as it is,
+    // delete rowdata will not be converted to DeleteRecord.
+    if (forDelete && config.get(FlinkOptions.CHANGELOG_ENABLED)) {
+      return null;
+    }
     Pair<NormalizedKeyComputer, RecordComparator> sortHelper = getSortHelper();
     return BinaryInMemorySortBuffer.createBuffer(
             sortHelper.getLeft(),
@@ -406,18 +414,38 @@ public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<Hood
       String instant,
       RowDataBucket rowDataBucket) {
     writeMetrics.startFileFlush();
+
+    HandleRecords.Builder builder = HandleRecords.builder();
+
     Iterator<BinaryRowData> rowItr =
         new MutableIteratorWrapperIterator<>(
-            rowDataBucket.getRecordIterator(),
+            rowDataBucket.getDataIterator(),
             () -> new BinaryRowData(rowType.getFieldCount()));
     Iterator<HoodieRecord> recordItr = new MappingIterator<>(
         rowItr, rowData -> convertToRecord(rowData, rowDataBucket.getBucketInfo(), instant));
+    builder.withRecordItr(deduplicateRecordsIfNeeded(recordItr));
 
-    List<WriteStatus> statuses = writeFunction.write(
-        deduplicateRecordsIfNeeded(recordItr), rowDataBucket.getBucketInfo(), instant);
+    if (rowDataBucket.getDeleteDataIterator() != null) {
+      Iterator<BinaryRowData> deleteRowItr =
+          new MutableIteratorWrapperIterator<>(
+              rowDataBucket.getDeleteDataIterator(),
+              () -> new BinaryRowData(rowType.getFieldCount()));
+      Iterator<DeleteRecord> deleteRecordItr = new MappingIterator<>(
+          deleteRowItr, deleteRow -> convertToDeleteRecord(deleteRow, rowDataBucket.getBucketInfo()));
+      builder.withDeleteRecordItr(deleteRecordItr);
+    }
+
+    List<WriteStatus> statuses = writeFunction.write(builder.build(), rowDataBucket.getBucketInfo(), instant);
     writeMetrics.endFileFlush();
     writeMetrics.increaseNumOfFilesWritten();
     return statuses;
+  }
+
+  protected DeleteRecord convertToDeleteRecord(RowData dataRow, BucketInfo bucketInfo) {
+    String key = keyGen.getRecordKey(dataRow);
+    HoodieKey hoodieKey = new HoodieKey(key, bucketInfo.getPartitionPath());
+    Comparable<?> preCombineValue = preCombineFieldExtractor.getPreCombineField(dataRow);
+    return DeleteRecord.create(hoodieKey, preCombineValue);
   }
 
   protected HoodieFlinkRecord convertToRecord(RowData dataRow, BucketInfo bucketInfo, String instant) {
@@ -478,6 +506,6 @@ public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<Hood
   }
 
   private interface WriteFunction {
-    List<WriteStatus> write(Iterator<HoodieRecord> records, BucketInfo bucketInfo, String instant);
+    List<WriteStatus> write(HandleRecords records, BucketInfo bucketInfo, String instant);
   }
 }

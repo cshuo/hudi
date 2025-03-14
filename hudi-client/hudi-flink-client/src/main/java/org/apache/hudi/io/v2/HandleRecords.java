@@ -38,14 +38,9 @@ public class HandleRecords {
   private final Iterator<HoodieRecord> recordItr;
   private final Option<Iterator<DeleteRecord>> deleteRecordItr;
 
-  public HandleRecords(Iterator<HoodieRecord> recordItr) {
-    this.recordItr = recordItr;
-    this.deleteRecordItr = Option.empty();
-  }
-
   public HandleRecords(Iterator<HoodieRecord> recordItr, Iterator<DeleteRecord> deleteItr) {
     this.recordItr = recordItr;
-    this.deleteRecordItr = Option.of(deleteItr);
+    this.deleteRecordItr = Option.ofNullable(deleteItr);
   }
 
   public Iterator<HoodieRecord> getRecordItr() {
@@ -54,5 +49,31 @@ public class HandleRecords {
 
   public Iterator<DeleteRecord> getDeleteRecordItr() {
     return this.deleteRecordItr.orElse(Collections.emptyIterator());
+  }
+
+  public static Builder builder() {
+    return new Builder();
+  }
+
+  public static class Builder {
+    private Iterator<HoodieRecord> recordItr;
+    private Iterator<DeleteRecord> deleteRecordItr;
+
+    public Builder() {
+    }
+
+    public Builder withRecordItr(Iterator<HoodieRecord> recordItr) {
+      this.recordItr = recordItr;
+      return this;
+    }
+
+    public Builder withDeleteRecordItr(Iterator<DeleteRecord> deleteRecordItr) {
+      this.deleteRecordItr = deleteRecordItr;
+      return this;
+    }
+
+    public HandleRecords build() {
+      return new HandleRecords(recordItr, deleteRecordItr);
+    }
   }
 }
