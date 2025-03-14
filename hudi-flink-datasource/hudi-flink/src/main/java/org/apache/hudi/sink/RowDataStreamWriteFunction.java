@@ -190,7 +190,8 @@ public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<Hood
   public Map<String, Iterator<BinaryRowData>> getDataBuffer() {
     Map<String, Iterator<BinaryRowData>> ret = new HashMap<>();
     for (Map.Entry<String, RowDataBucket> entry : buckets.entrySet()) {
-      ret.put(entry.getKey(), new MutableIteratorWrapperIterator<>(entry.getValue().getDataIterator(), () -> new BinaryRowData(rowType.getFieldCount())));
+      ret.put(entry.getKey(), new MutableIteratorWrapperIterator<>(
+          entry.getValue().getDataIterator(), () -> new BinaryRowData(rowType.getFieldCount()), false));
     }
     return ret;
   }
@@ -419,8 +420,7 @@ public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<Hood
 
     Iterator<BinaryRowData> rowItr =
         new MutableIteratorWrapperIterator<>(
-            rowDataBucket.getDataIterator(),
-            () -> new BinaryRowData(rowType.getFieldCount()));
+            rowDataBucket.getDataIterator(), () -> new BinaryRowData(rowType.getFieldCount()), true);
     Iterator<HoodieRecord> recordItr = new MappingIterator<>(
         rowItr, rowData -> convertToRecord(rowData, rowDataBucket.getBucketInfo(), instant));
     builder.withRecordItr(deduplicateRecordsIfNeeded(recordItr));
@@ -428,8 +428,7 @@ public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<Hood
     if (rowDataBucket.getDeleteDataIterator() != null) {
       Iterator<BinaryRowData> deleteRowItr =
           new MutableIteratorWrapperIterator<>(
-              rowDataBucket.getDeleteDataIterator(),
-              () -> new BinaryRowData(rowType.getFieldCount()));
+              rowDataBucket.getDeleteDataIterator(), () -> new BinaryRowData(rowType.getFieldCount()), false);
       Iterator<DeleteRecord> deleteRecordItr = new MappingIterator<>(
           deleteRowItr, deleteRow -> convertToDeleteRecord(deleteRow, rowDataBucket.getBucketInfo()));
       builder.withDeleteRecordItr(deleteRecordItr);

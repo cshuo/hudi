@@ -43,13 +43,6 @@ public class RowDataBucket {
 
   public RowDataBucket(
       BinaryInMemorySortBuffer dataBuffer,
-      BucketInfo bucketInfo,
-      Double batchSize) {
-    this(dataBuffer, null, bucketInfo, batchSize);
-  }
-
-  public RowDataBucket(
-      BinaryInMemorySortBuffer dataBuffer,
       BinaryInMemorySortBuffer deleteDataBuffer,
       BucketInfo bucketInfo,
       Double batchSize) {

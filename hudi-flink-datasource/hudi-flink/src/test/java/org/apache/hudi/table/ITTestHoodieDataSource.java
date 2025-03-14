@@ -2440,8 +2440,10 @@ public class ITTestHoodieDataSource {
   private static Stream<Arguments> indexAndTableTypeParams() {
     Object[][] data =
         new Object[][] {
-            {"FLINK_STATE", HoodieTableType.MERGE_ON_READ}
-            };
+            {"FLINK_STATE", HoodieTableType.COPY_ON_WRITE},
+            {"FLINK_STATE", HoodieTableType.MERGE_ON_READ},
+            {"BUCKET", HoodieTableType.COPY_ON_WRITE},
+            {"BUCKET", HoodieTableType.MERGE_ON_READ}};
     return Stream.of(data).map(Arguments::of);
   }
 

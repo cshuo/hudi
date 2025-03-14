@@ -91,13 +91,18 @@ public class HoodieDeleteBlock extends HoodieLogBlock {
       getRecordsToDelete();
     }
 
-    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-    DataOutputStream output = new DataOutputStream(baos);
-    output.writeInt(version);
-    byte[] bytesToWrite = (version <= 2) ? serializeV2() : serializeV3();
-    output.writeInt(bytesToWrite.length);
-    output.write(bytesToWrite);
-    return baos.toByteArray();
+    if (version <= 2) {
+      ByteArrayOutputStream baos = new ByteArrayOutputStream();
+      DataOutputStream output = new DataOutputStream(baos);
+      output.writeInt(version);
+      byte[] bytesToWrite = serializeV2();
+      output.writeInt(bytesToWrite.length);
+      output.write(bytesToWrite);
+      return baos.toByteArray();
+    } else {
+      Iterator<DeleteRecord> deleteRecordIterator = Arrays.stream(getRecordsToDelete()).iterator();
+      return BlockBytesConverter.getDeleteBlockSerializer().serialize(deleteRecordIterator);
+    }
   }
 
   public DeleteRecord[] getRecordsToDelete() {
@@ -125,11 +130,6 @@ public class HoodieDeleteBlock extends HoodieLogBlock {
   private byte[] serializeV2() throws IOException {
     // Serialization for log block version 2
     return SerializationUtils.serialize(getRecordsToDelete());
-  }
-
-  private byte[] serializeV3() throws IOException {
-    Iterator<DeleteRecord> deleteRecordIterator = Arrays.stream(getRecordsToDelete()).iterator();
-    return BlockBytesConverter.getDeleteBlockSerializer().serialize(deleteRecordIterator);
   }
 
   private static DeleteRecord[] deserialize(int version, byte[] data) throws IOException {
