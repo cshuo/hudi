@@ -233,8 +233,9 @@ public class DataTypeUtils {
   public static boolean containsNestedComplexType(RowType rowType) {
     return rowType.getFields().stream().anyMatch(
         // the root type of the field is complex type
-        f -> f.getType().isAnyOf(LogicalTypeFamily.CONSTRUCTED)
+        f -> f.getType().getTypeRoot().getFamilies().contains(LogicalTypeFamily.CONSTRUCTED)
             // the inside element type is also complex type
-            && f.getType().getChildren().stream().anyMatch(element -> element.isAnyOf(LogicalTypeFamily.CONSTRUCTED)));
+            && f.getType().getChildren().stream().anyMatch(
+                element -> element.getTypeRoot().getFamilies().contains(LogicalTypeFamily.CONSTRUCTED)));
   }
 }
