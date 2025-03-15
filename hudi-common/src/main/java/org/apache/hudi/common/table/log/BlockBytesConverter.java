@@ -36,14 +36,15 @@ import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.io.EncoderFactory;
 import org.apache.avro.specific.SpecificDatumWriter;
-import org.apache.commons.collections.IteratorUtils;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -163,8 +164,10 @@ public class BlockBytesConverter {
               .setPartitionPath(record.getPartitionPath())
               .setOrderingVal(wrapValueIntoAvro(record.getOrderingValue()))
               .build());
+      List<HoodieDeleteRecord> deleteRecordList = new ArrayList<>();
+      deleteItr.forEachRemaining(deleteRecordList::add);
       writer.write(HoodieDeleteRecordList.newBuilder(recordListBuilder)
-          .setDeleteRecordList(IteratorUtils.toList(deleteItr))
+          .setDeleteRecordList(deleteRecordList)
           .build(), encoder);
       encoder.flush();
       return baos.toByteArray();

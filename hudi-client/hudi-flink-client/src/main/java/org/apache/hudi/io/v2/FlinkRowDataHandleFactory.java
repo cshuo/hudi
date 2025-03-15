@@ -20,14 +20,12 @@ package org.apache.hudi.io.v2;
 
 import org.apache.hudi.common.model.HoodieTableType;
 import org.apache.hudi.common.table.HoodieTableConfig;
-import org.apache.hudi.common.util.Option;
 import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.exception.HoodieException;
 import org.apache.hudi.io.HoodieWriteHandle;
 import org.apache.hudi.table.HoodieTable;
 import org.apache.hudi.table.action.commit.BucketInfo;
 
-import org.apache.flink.table.types.logical.RowType;
 import org.apache.hadoop.fs.Path;
 
 import java.util.Map;

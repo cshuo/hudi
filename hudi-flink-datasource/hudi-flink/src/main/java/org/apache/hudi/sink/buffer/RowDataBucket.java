@@ -18,6 +18,7 @@
 
 package org.apache.hudi.sink.buffer;
 
+import org.apache.hudi.common.util.Option;
 import org.apache.hudi.table.action.commit.BucketInfo;
 
 import org.apache.flink.table.data.RowData;
@@ -27,7 +28,6 @@ import org.apache.flink.types.RowKind;
 import org.apache.flink.util.MutableObjectIterator;
 
 import java.io.IOException;
-import java.util.Optional;
 
 /**
  * RowData buffer for a specific data bucket, and the buffer is based on {@code BinaryInMemorySortBuffer}
@@ -37,7 +37,7 @@ import java.util.Optional;
  */
 public class RowDataBucket {
   private final BinaryInMemorySortBuffer dataBuffer;
-  private final Optional<BinaryInMemorySortBuffer> deleteDataBuffer;
+  private final Option<BinaryInMemorySortBuffer> deleteDataBuffer;
   private final BucketInfo bucketInfo;
   private final BufferSizeDetector detector;
 
@@ -47,18 +47,16 @@ public class RowDataBucket {
       BucketInfo bucketInfo,
       Double batchSize) {
     this.dataBuffer = dataBuffer;
-    this.deleteDataBuffer = Optional.ofNullable(deleteDataBuffer);
+    this.deleteDataBuffer = Option.ofNullable(deleteDataBuffer);
     this.bucketInfo = bucketInfo;
     this.detector = new BufferSizeDetector(batchSize);
   }
 
   public MutableObjectIterator<BinaryRowData> getDataIterator() {
-    // todo perform sort if necessary
     return dataBuffer.getIterator();
   }
 
   public MutableObjectIterator<BinaryRowData> getDeleteDataIterator() {
-    // todo perform sort if necessary
     return deleteDataBuffer.map(BinaryInMemorySortBuffer::getIterator).orElse(null);
   }
 
