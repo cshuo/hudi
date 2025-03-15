@@ -25,10 +25,11 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.table.runtime.util.MemorySegmentPool;
 
 /**
- * todo
+ * Factory to create {@code MemorySegmentPool}, currently only heap based memory pool {@code HeapMemorySegmentPool}
+ * is supported.
  */
 public class MemorySegmentPoolFactory {
-  // currrently support heap pool only, todo support pool based on flink managed memory
+  // todo support pool based on flink managed memory, currently support heap pool only,
   public static MemorySegmentPool createMemorySegmentPool(Configuration conf) {
     long mergeReaderMem = 100; // constant 100MB
     long mergeMapMaxMem = conf.get(FlinkOptions.WRITE_MERGE_MAX_MEMORY);

@@ -32,6 +32,7 @@ import org.apache.hudi.common.table.HoodieTableConfig;
 import org.apache.hudi.common.table.cdc.HoodieCDCSupplementalLoggingMode;
 import org.apache.hudi.common.table.timeline.TimelineUtils.HollowCommitHandling;
 import org.apache.hudi.common.util.StringUtils;
+import org.apache.hudi.common.util.VisibleForTesting;
 import org.apache.hudi.config.HoodieCleanConfig;
 import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.exception.HoodieException;
@@ -39,7 +40,9 @@ import org.apache.hudi.index.HoodieIndex;
 import org.apache.hudi.keygen.constant.KeyGeneratorOptions;
 import org.apache.hudi.sink.overwrite.PartitionOverwriteMode;
 import org.apache.hudi.table.format.FilePathUtils;
+import org.apache.hudi.util.AvroSchemaConverter;
 import org.apache.hudi.util.DataTypeUtils;
+import org.apache.hudi.util.StreamerUtil;
 
 import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.configuration.Configuration;
@@ -90,6 +93,12 @@ public class OptionsResolver {
         && HoodieTableType.valueOf(conf.get(FlinkOptions.TABLE_TYPE)) == HoodieTableType.MERGE_ON_READ
         && WriteOperationType.valueOf(conf.get(FlinkOptions.OPERATION).toUpperCase()) == WriteOperationType.UPSERT
         && !DataTypeUtils.containsNestedComplexType(rowType);
+  }
+
+  @VisibleForTesting
+  public static boolean supportRowDataAppend(Configuration conf) {
+    RowType rowType = (RowType) AvroSchemaConverter.convertToDataType(StreamerUtil.getSourceSchema(conf)).getLogicalType();
+    return supportRowDataAppend(conf, rowType);
   }
 
   /**

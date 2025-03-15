@@ -19,6 +19,7 @@
 package org.apache.hudi.sink.utils;
 
 import org.apache.hudi.common.model.HoodieRecord;
+import org.apache.hudi.sink.bucket.BucketRowDataStreamWriteFunction;
 import org.apache.hudi.sink.bucket.BucketStreamWriteFunction;
 import org.apache.hudi.sink.common.AbstractStreamWriteFunction;
 
@@ -32,19 +33,19 @@ import java.util.Map;
  *
  * @param <I> Input type
  */
-public class BucketStreamWriteFunctionWrapper<I> extends BaseBucketWriteFunctionWrapper<I> {
+public class BucketRowDataStreamWriteFunctionWrapper<I> extends BaseBucketWriteFunctionWrapper<I> {
 
-  public BucketStreamWriteFunctionWrapper(String tablePath, Configuration conf) throws Exception {
+  public BucketRowDataStreamWriteFunctionWrapper(String tablePath, Configuration conf) throws Exception {
     super(tablePath, conf);
   }
 
   @Override
   public Map<String, List<HoodieRecord>> getDataBuffer() {
-    return ((BucketStreamWriteFunction) writeFunction).getDataBuffer();
+    return ((BucketRowDataStreamWriteFunction) writeFunction).getDataBuffer();
   }
 
   @Override
   protected AbstractStreamWriteFunction createWriteFunction() {
-    return new BucketStreamWriteFunction(conf, rowType);
+    return new BucketRowDataStreamWriteFunction(conf, rowType);
   }
 }

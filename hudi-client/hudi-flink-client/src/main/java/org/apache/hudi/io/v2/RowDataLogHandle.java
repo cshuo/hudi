@@ -185,15 +185,11 @@ public class RowDataLogHandle<T, I, K, O> extends HoodieWriteHandle<T, I, K, O> 
           .getColumnsToIndex(hoodieTable.getMetaClient().getTableConfig(),
               config.getMetadataConfig(), Lazy.eagerly(Option.of(writeSchemaWithMetaFields)),
               Option.of(HoodieRecord.HoodieRecordType.FLINK)).keySet());
-      if (result.getRecordsStats().isEmpty()) {
-        throw new UnsupportedOperationException("Do not support collecting column stats from records.");
-      } else {
-        Map<String, HoodieColumnRangeMetadata<Comparable>> columnRangeMetadataMap =
-            result.getRecordsStats().entrySet().stream()
-                .filter(e -> columnsToIndexSet.contains(e.getKey()))
-                .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().copy(stat.getPath())));
-        stat.putRecordsStats(columnRangeMetadataMap);
-      }
+      Map<String, HoodieColumnRangeMetadata<Comparable>> columnRangeMetadataMap =
+          result.getRecordsStats().entrySet().stream()
+              .filter(e -> columnsToIndexSet.contains(e.getKey()))
+              .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().copy(stat.getPath())));
+      stat.putRecordsStats(columnRangeMetadataMap);
     }
     resetWriteCounts();
     assert stat.getRuntimeStats() != null;

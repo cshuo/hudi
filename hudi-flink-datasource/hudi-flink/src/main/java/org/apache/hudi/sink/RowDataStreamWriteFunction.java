@@ -33,7 +33,6 @@ import org.apache.hudi.common.util.StringUtils;
 import org.apache.hudi.common.util.ValidationUtils;
 import org.apache.hudi.common.util.VisibleForTesting;
 import org.apache.hudi.common.util.collection.MappingIterator;
-import org.apache.hudi.common.util.collection.Pair;
 import org.apache.hudi.configuration.FlinkOptions;
 import org.apache.hudi.configuration.OptionsResolver;
 import org.apache.hudi.exception.HoodieException;
@@ -44,8 +43,8 @@ import org.apache.hudi.sink.buffer.RowDataBucket;
 import org.apache.hudi.sink.buffer.TotalSizeTracer;
 import org.apache.hudi.sink.common.AbstractStreamWriteFunction;
 import org.apache.hudi.sink.event.WriteMetadataEvent;
-import org.apache.hudi.sink.utils.DummyNormalizedKeyComputer;
-import org.apache.hudi.sink.utils.DummyRecordComparator;
+import org.apache.hudi.sink.exception.MemoryPagesExhaustedException;
+import org.apache.hudi.sink.utils.BufferUtils;
 import org.apache.hudi.table.action.commit.BucketInfo;
 import org.apache.hudi.table.action.commit.BucketType;
 import org.apache.hudi.util.MutableIteratorWrapperIterator;
@@ -62,11 +61,7 @@ import org.apache.flink.table.data.StringData;
 import org.apache.flink.table.data.TimestampData;
 import org.apache.flink.table.data.binary.BinaryRowData;
 import org.apache.flink.table.data.utils.JoinedRowData;
-import org.apache.flink.table.runtime.generated.NormalizedKeyComputer;
-import org.apache.flink.table.runtime.generated.RecordComparator;
 import org.apache.flink.table.runtime.operators.sort.BinaryInMemorySortBuffer;
-import org.apache.flink.table.runtime.typeutils.BinaryRowDataSerializer;
-import org.apache.flink.table.runtime.typeutils.RowDataSerializer;
 import org.apache.flink.table.runtime.util.MemorySegmentPool;
 import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.RowType;
@@ -213,21 +208,6 @@ public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<Hood
   }
 
   // -------------------------------------------------------------------------
-  //  Getter/Setter
-  // -------------------------------------------------------------------------
-
-  @VisibleForTesting
-  @SuppressWarnings("rawtypes")
-  public Map<String, Iterator<BinaryRowData>> getDataBuffer() {
-    Map<String, Iterator<BinaryRowData>> ret = new HashMap<>();
-    for (Map.Entry<String, RowDataBucket> entry : buckets.entrySet()) {
-      ret.put(entry.getKey(), new MutableIteratorWrapperIterator<>(
-          entry.getValue().getDataIterator(), () -> new BinaryRowData(rowType.getFieldCount()), false));
-    }
-    return ret;
-  }
-
-  // -------------------------------------------------------------------------
   //  Utilities
   // -------------------------------------------------------------------------
 
@@ -275,6 +255,29 @@ public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<Hood
   }
 
   /**
+   * Create a data bucket if not exists and trying to insert a data row, there exists two cases that data cannot be
+   * inserted successfully:
+   * <p>1. Data Bucket do not exist and there is no enough memory pages to create a new binary buffer.
+   * <p>2. Data Bucket exists, but fails to request new memory pages from memory pool.
+   */
+  private boolean createBucketAndWriteRow(String bucketID, HoodieFlinkInternalRow record) throws IOException {
+    try {
+      RowDataBucket bucket = this.buckets.computeIfAbsent(bucketID,
+          k -> new RowDataBucket(
+              bucketID,
+              createBucketBuffer(false),
+              createBucketBuffer(true),
+              getBucketInfo(record),
+              this.config.get(FlinkOptions.WRITE_BATCH_SIZE)));
+
+      return bucket.writeRow(record.getRowData());
+    } catch (MemoryPagesExhaustedException e) {
+      LOG.info("There is no enough free pages in memory pool to create buffer, need flushing first.");
+      return false;
+    }
+  }
+
+  /**
    * Buffers the given record.
    *
    * <p>Flush the data bucket first if the bucket records size is greater than
@@ -287,46 +290,48 @@ public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<Hood
    */
   protected void bufferRecord(HoodieFlinkInternalRow record) throws IOException {
     writeMetrics.markRecordIn();
-    final String bucketID = getBucketID(record.getPartitionPath(), record.getFileId());
-
-    RowDataBucket bucket = this.buckets.computeIfAbsent(bucketID,
-        k -> new RowDataBucket(
-            createBucketBuffer(false),
-            createBucketBuffer(true),
-            getBucketInfo(record),
-            this.config.get(FlinkOptions.WRITE_BATCH_SIZE)));
-
     // set operation type into rowkind of row.
     record.getRowData().setRowKind(
         RowKind.fromByteValue(HoodieOperation.fromName(record.getOperationType()).getValue()));
+    final String bucketID = getBucketID(record.getPartitionPath(), record.getFileId());
 
-    boolean success = bucket.writeRow(record.getRowData());
-    // buffer is full.
+    boolean success = createBucketAndWriteRow(bucketID, record);
+    // 1. flushing bucket for memory pool is full.
     if (!success) {
       RowDataBucket bucketToFlush = this.buckets.values().stream()
           .max(Comparator.comparingLong(b -> b.getBufferSize()))
           .orElseThrow(NoSuchElementException::new);
       if (flushBucket(bucketToFlush)) {
         this.tracer.countDown(bucketToFlush.getBufferSize());
-        bucketToFlush.reset();
+        disposeBucket(bucketToFlush);
       } else {
         LOG.warn("The buffer size hits the threshold {}, but still flush the max size data bucket failed!", this.tracer.maxBufferSize);
       }
       // try write row again
-      success = bucket.writeRow(record.getRowData());
+      success = createBucketAndWriteRow(bucketID, record);
       if (!success) {
         throw new RuntimeException("Buffer is too small to hold a single record.");
       }
     }
+    RowDataBucket bucket = this.buckets.get(bucketID);
     this.tracer.trace(bucket.getLastRecordSize());
+    // 2. flushing bucket for bucket is full.
     if (bucket.isFull()) {
       if (flushBucket(bucket)) {
         this.tracer.countDown(bucket.getBufferSize());
-        bucket.reset();
+        disposeBucket(bucket);
       }
     }
     // update buffer metrics after tracing buffer size
     writeMetrics.setWriteBufferedSize(this.tracer.bufferSize);
+  }
+
+  /**
+   * RowData data bucket can not be used after disposing.
+   */
+  private void disposeBucket(RowDataBucket rowDataBucket) {
+    rowDataBucket.dispose();
+    this.buckets.remove(rowDataBucket.getBucketId());
   }
 
   private BinaryInMemorySortBuffer createBucketBuffer(boolean forDelete) {
@@ -335,18 +340,7 @@ public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<Hood
     if (forDelete && config.get(FlinkOptions.CHANGELOG_ENABLED)) {
       return null;
     }
-    Pair<NormalizedKeyComputer, RecordComparator> sortHelper = getSortHelper();
-    return BinaryInMemorySortBuffer.createBuffer(
-            sortHelper.getLeft(),
-            new RowDataSerializer(rowType),
-            new BinaryRowDataSerializer(rowType.getFieldCount()),
-            sortHelper.getRight(),
-            memorySegmentPool);
-  }
-
-  private Pair<NormalizedKeyComputer, RecordComparator> getSortHelper() {
-    // todo gen real ones.
-    return Pair.of(new DummyNormalizedKeyComputer(), new DummyRecordComparator());
+    return BufferUtils.createBuffer(rowType, memorySegmentPool);
   }
 
   private static BucketInfo getBucketInfo(HoodieFlinkInternalRow internalRow) {
@@ -409,7 +403,7 @@ public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<Hood
           .forEach(bucket -> {
             if (!bucket.isEmpty()) {
               writeStatus.addAll(writeRecords(currentInstant, bucket));
-              bucket.reset();
+              bucket.dispose();
             }
           });
     } else {
@@ -533,6 +527,35 @@ public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<Hood
         return (Comparable<?>) orderVal;
       }
     };
+  }
+
+  // -------------------------------------------------------------------------
+  //  Getter/Setter
+  // -------------------------------------------------------------------------
+
+  @VisibleForTesting
+  @SuppressWarnings("rawtypes")
+  public Map<String, List<HoodieRecord>> getDataBuffer() {
+    Map<String, List<HoodieRecord>> ret = new HashMap<>();
+    for (Map.Entry<String, RowDataBucket> entry : buckets.entrySet()) {
+      List<HoodieRecord> records = new ArrayList<>();
+      Iterator<BinaryRowData> rowItr =
+          new MutableIteratorWrapperIterator<>(
+              entry.getValue().getDataIterator(), () -> new BinaryRowData(rowType.getFieldCount()), false);
+      while (rowItr.hasNext()) {
+        records.add(convertToRecord(rowItr.next(), entry.getValue().getBucketInfo(), ""));
+      }
+      if (entry.getValue().getDeleteDataIterator() != null) {
+        Iterator<BinaryRowData> deleteRowItr =
+            new MutableIteratorWrapperIterator<>(
+                entry.getValue().getDeleteDataIterator(), () -> new BinaryRowData(rowType.getFieldCount()), false);
+        while (deleteRowItr.hasNext()) {
+          records.add(convertToRecord(deleteRowItr.next(), entry.getValue().getBucketInfo(), ""));
+        }
+      }
+      ret.put(entry.getKey(), records);
+    }
+    return ret;
   }
 
   private interface WriteFunction {

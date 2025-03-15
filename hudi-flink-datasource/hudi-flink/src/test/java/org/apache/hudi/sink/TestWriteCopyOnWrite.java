@@ -54,8 +54,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  */
 public class TestWriteCopyOnWrite extends TestWriteBase {
 
-  // to trigger buffer flush of 3 rows, each is 576 bytes for INSERT and 624 bytes for UPSERT
-  private static final double BATCH_SIZE_MB = 0.0016;
+  // for legacy write function: to trigger buffer flush of 3 rows, each is 576 bytes for INSERT and 624 bytes for UPSERT
+  private static final double BATCH_SIZE_MB_V1 = 0.0016;
+  // for RowData write function: to trigger buffer flush with batch size exceeded by 3 rows, each record is 48 bytes
+  private static final double BATCH_SIZE_MB_V2 = 0.00013;
+  // for RowData write function: to trigger buffer flush with memory pool exhausted.
+  private static final double BUFFER_SIZE_MB_V2 = 0.0004;
 
   @ParameterizedTest
   @ValueSource(booleans = {true, false})
@@ -261,7 +265,6 @@ public class TestWriteCopyOnWrite extends TestWriteBase {
   public void testInsertWithMiniBatches() throws Exception {
     // reset the config option
     conf.setDouble(FlinkOptions.WRITE_BATCH_SIZE, getBatchSize());
-    conf.set(FlinkOptions.INDEX_TYPE, "BUCKET");
 
     Map<String, String> expected = getMiniBatchExpected();
 
@@ -273,8 +276,13 @@ public class TestWriteCopyOnWrite extends TestWriteBase {
         .allDataFlushed()
         .handleEvents(2)
         .checkpointComplete(1)
+        .checkWrittenData(expected, 1)
+        .consume(TestData.DATA_SET_INSERT_DUPLICATES)
+        .checkpoint(2)
+        .handleEvents(2)
+        .checkpointComplete(2)
+        .checkWrittenData(expected, 1)
         .end();
-    System.out.println("ok");
   }
 
   @Test
@@ -378,7 +386,8 @@ public class TestWriteCopyOnWrite extends TestWriteBase {
   @Test
   public void testInsertWithSmallBufferSize() throws Exception {
     // reset the config option
-    conf.setDouble(FlinkOptions.WRITE_TASK_MAX_SIZE, 200 + getBatchSize());
+    conf.set(FlinkOptions.WRITE_MEMORY_SEGMENT_PAGE_SIZE, 64);
+    conf.setDouble(FlinkOptions.WRITE_TASK_MAX_SIZE, 200 + getBufferSize());
 
     Map<String, String> expected = getMiniBatchExpected();
 
@@ -439,7 +448,11 @@ public class TestWriteCopyOnWrite extends TestWriteBase {
   }
 
   protected double getBatchSize() {
-    return BATCH_SIZE_MB;
+    return OptionsResolver.supportRowDataAppend(conf) ? BATCH_SIZE_MB_V2 : BATCH_SIZE_MB_V1;
+  }
+
+  protected double getBufferSize() {
+    return OptionsResolver.supportRowDataAppend(conf) ? BUFFER_SIZE_MB_V2 : BATCH_SIZE_MB_V1;
   }
 
   protected Map<String, String> getMiniBatchExpected() {
@@ -511,6 +524,7 @@ public class TestWriteCopyOnWrite extends TestWriteBase {
   public void testWriteExactlyOnce() throws Exception {
     // reset the config option
     conf.setLong(FlinkOptions.WRITE_COMMIT_ACK_TIMEOUT, 1L);
+    conf.set(FlinkOptions.WRITE_MEMORY_SEGMENT_PAGE_SIZE, 64);
     conf.setDouble(FlinkOptions.WRITE_TASK_MAX_SIZE, 200.0006); // 630 bytes buffer size
     preparePipeline(conf)
         .consume(TestData.DATA_SET_INSERT)

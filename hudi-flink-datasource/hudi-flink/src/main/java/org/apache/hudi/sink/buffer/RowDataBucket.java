@@ -40,12 +40,15 @@ public class RowDataBucket {
   private final Option<BinaryInMemorySortBuffer> deleteDataBuffer;
   private final BucketInfo bucketInfo;
   private final BufferSizeDetector detector;
+  private final String bucketId;
 
   public RowDataBucket(
+      String bucketId,
       BinaryInMemorySortBuffer dataBuffer,
       BinaryInMemorySortBuffer deleteDataBuffer,
       BucketInfo bucketInfo,
       Double batchSize) {
+    this.bucketId = bucketId;
     this.dataBuffer = dataBuffer;
     this.deleteDataBuffer = Option.ofNullable(deleteDataBuffer);
     this.bucketInfo = bucketInfo;
@@ -58,6 +61,10 @@ public class RowDataBucket {
 
   public MutableObjectIterator<BinaryRowData> getDeleteDataIterator() {
     return deleteDataBuffer.map(BinaryInMemorySortBuffer::getIterator).orElse(null);
+  }
+
+  public String getBucketId() {
+    return bucketId;
   }
 
   public boolean writeRow(RowData rowData) throws IOException {
@@ -93,9 +100,9 @@ public class RowDataBucket {
     return detector.getLastRecordSize();
   }
 
-  public void reset() {
-    dataBuffer.reset();
-    deleteDataBuffer.ifPresent(BinaryInMemorySortBuffer::reset);
+  public void dispose() {
+    dataBuffer.dispose();
+    deleteDataBuffer.ifPresent(BinaryInMemorySortBuffer::dispose);
     detector.reset();
   }
 }
