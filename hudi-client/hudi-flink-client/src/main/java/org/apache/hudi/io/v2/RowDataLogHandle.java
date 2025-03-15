@@ -74,12 +74,12 @@ import static org.apache.hudi.common.config.HoodieStorageConfig.PARQUET_DICTIONA
 
 /**
  * A write handle that supports creating a log file and writing records based on record Iterator.
- * The difference with {@code FlinkAppendHandle} is:
+ * The differences from {@code FlinkAppendHandle} are:
  *
- * <p> 1. {@code RowDataLogHandle} do not convert RowData into Avro record before writing.
+ * <p> 1. {@code RowDataLogHandle} does not convert RowData into Avro record before writing.
  * <p> 2. {@code RowDataLogHandle} writes Parquet data block by default.
- * <p> 3. {@code RowDataLogHandle} do not buffer data internally, but using record iterator to write
- *        data block for more memory efficiency.
+ * <p> 3. {@code RowDataLogHandle} does not buffer data internally, instead, it employs a
+ *        record iterator to write data blocks, thereby enhancing memory efficiency.
  *
  * <p>The back-up writer may roll over to a new log file if there already exists a log file for the
  * given file group and instant.

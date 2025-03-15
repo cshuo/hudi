@@ -88,7 +88,38 @@ import java.util.NoSuchElementException;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * todo
+ * Sink function to write the data to the underneath filesystem.
+ *
+ * <p><h2>Work Flow</h2>
+ *
+ * <p>The function firstly buffers the data (RowData) in a binary buffer based on {@code BinaryInMemorySortBuffer}.
+ * It flushes(write) the records batch when the batch size exceeds the configured size {@link FlinkOptions#WRITE_BATCH_SIZE}
+ * or the memory of the binary buffer is exhausted, and could not append any more data or a Flink checkpoint starts.
+ * After a batch has been written successfully, the function notifies its operator coordinator {@link StreamWriteOperatorCoordinator}
+ * to mark a successful write.
+ *
+ * <p><h2>The Semantics</h2>
+ *
+ * <p>The task implements exactly-once semantics by buffering the data between checkpoints. The operator coordinator
+ * starts a new instant on the timeline when a checkpoint triggers, the coordinator checkpoints always
+ * start before its operator, so when this function starts a checkpoint, a REQUESTED instant already exists.
+ *
+ * <p>The function process thread blocks data buffering after the checkpoint thread finishes flushing the existing data buffer until
+ * the current checkpoint succeed and the coordinator starts a new instant. Any error triggers the job failure during the metadata committing,
+ * when the job recovers from a failure, the write function re-send the write metadata to the coordinator to see if these metadata
+ * can re-commit, thus if unexpected error happens during the instant committing, the coordinator would retry to commit when the job
+ * recovers.
+ *
+ * <p><h2>Fault Tolerance</h2>
+ *
+ * <p>The operator coordinator checks and commits the last instant then starts a new one after a checkpoint finished successfully.
+ * It rolls back any inflight instant before it starts a new instant, this means one hoodie instant only span one checkpoint,
+ * the write function blocks data buffer flushing for the configured checkpoint timeout
+ * before it throws exception, any checkpoint failure would finally trigger the job failure.
+ *
+ * <p>Note: The function task requires the input stream be shuffled by the file IDs.
+ *
+ * @see StreamWriteOperatorCoordinator
  */
 public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<HoodieFlinkInternalRow> {
 
