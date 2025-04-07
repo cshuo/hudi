@@ -23,9 +23,11 @@ import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieOperation;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.MetadataValues;
+import org.apache.hudi.common.util.ConfigUtils;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.collection.Pair;
 import org.apache.hudi.keygen.BaseKeyGenerator;
+import org.apache.hudi.util.HoodieRowDataUtil;
 
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
@@ -36,12 +38,15 @@ import org.apache.flink.table.data.RowData;
 import java.io.IOException;
 import java.util.Map;
 import java.util.Properties;
+import java.util.function.UnaryOperator;
+
+import static org.apache.hudi.common.util.StringUtils.isNullOrEmpty;
 
 /**
  * Flink Engine-specific Implementations of `HoodieRecord`, which is expected to hold {@code RowData} as payload.
  */
 public class HoodieFlinkRecord extends HoodieRecord<RowData> {
-  private Comparable<?> orderingValue = 0;
+  private Comparable<?> orderingValue;
 
   public HoodieFlinkRecord(RowData rowData) {
     super(null, rowData);
@@ -72,7 +77,29 @@ public class HoodieFlinkRecord extends HoodieRecord<RowData> {
   }
 
   @Override
+  public HoodieOperation getOperation() {
+    if (this.operation == null) {
+      this.operation = HoodieOperation.fromValue(data.getRowKind().toByteValue());
+    }
+    return this.operation;
+  }
+
+  @Override
   public Comparable<?> getOrderingValue(Schema recordSchema, Properties props) {
+    if (this.orderingValue == null) {
+      String orderingField = ConfigUtils.getOrderingField(props);
+      if (isNullOrEmpty(orderingField)) {
+        this.orderingValue = DEFAULT_ORDERING_VALUE;
+      } else {
+        Option<RowData.FieldGetter> fieldGetterOpt = HoodieRowDataUtil.getFieldGetter(recordSchema, orderingField);
+        Object orderingVal = fieldGetterOpt.get().getFieldOrNull(this.data);
+        // currently the ordering value stored in DeleteRecord is converted to Avro value because Flink reader currently uses AVRO payload to merge.
+        // So here we align the data format with reader until RowData reader is supported, HUDI-9146.
+        boolean useUTCTimezone = Boolean.parseBoolean(props.getProperty("read.utc-timezone", "true"));
+        UnaryOperator<Object> fieldConverter = HoodieRowDataUtil.getFieldConverter(recordSchema, orderingField, useUTCTimezone);
+        this.orderingValue = orderingVal != null ? (Comparable) fieldConverter.apply(orderingVal) : DEFAULT_ORDERING_VALUE;
+      }
+    }
     return this.orderingValue;
   }
 

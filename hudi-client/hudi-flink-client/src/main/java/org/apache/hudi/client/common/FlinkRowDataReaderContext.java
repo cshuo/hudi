@@ -164,34 +164,22 @@ public class FlinkRowDataReaderContext extends HoodieReaderContext<RowData> {
   }
 
   @Override
-  public Map<String, Object> generateMetadataForRecord(RowData record, Schema schema, Option<String> orderingFieldName) {
-    Map<String, Object> metadata = super.generateMetadataForRecord(record, schema, orderingFieldName);
-    if (orderingFieldName.isEmpty() || metadata.containsKey(INTERNAL_META_ORDERING_FIELD)) {
-      return metadata;
-    }
-    Comparable orderingValue = getOrderingValue(Option.of(record), metadata, schema, orderingFieldName);
-    metadata.put(INTERNAL_META_ORDERING_FIELD, orderingValue);
-    return metadata;
-  }
-
-  @Override
   public HoodieRecord<RowData> constructHoodieRecord(Option<RowData> recordOption, Map<String, Object> metadataMap) {
     HoodieKey hoodieKey = new HoodieKey(
         (String) metadataMap.get(INTERNAL_META_RECORD_KEY),
         (String) metadataMap.get(INTERNAL_META_PARTITION_PATH));
-    Comparable orderingValue;
-    if (metadataMap.containsKey(INTERNAL_META_ORDERING_FIELD)) {
-      orderingValue = (Comparable) metadataMap.get(INTERNAL_META_ORDERING_FIELD);
-    } else {
-      throw new HoodieException("There should be ordering value in metadataMap.");
-    }
     RowData rowData = recordOption.get();
-    HoodieOperation operation = HoodieOperation.fromValue(rowData.getRowKind().toByteValue());
     // delete record
     if (recordOption.isEmpty()) {
-      return new HoodieEmptyRecord<>(hoodieKey, operation, orderingValue, HoodieRecord.HoodieRecordType.FLINK);
+      Comparable orderingValue;
+      if (metadataMap.containsKey(INTERNAL_META_ORDERING_FIELD)) {
+        orderingValue = (Comparable) metadataMap.get(INTERNAL_META_ORDERING_FIELD);
+      } else {
+        throw new HoodieException("There should be ordering value in metadataMap.");
+      }
+      return new HoodieEmptyRecord<>(hoodieKey, HoodieOperation.DELETE, orderingValue, HoodieRecord.HoodieRecordType.FLINK);
     }
-    return new HoodieFlinkRecord(hoodieKey, operation, orderingValue, rowData);
+    return new HoodieFlinkRecord(hoodieKey, rowData);
   }
 
   @Override
