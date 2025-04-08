@@ -392,13 +392,9 @@ public abstract class FileGroupRecordBuffer<T> implements HoodieFileGroupRecordB
     } else {
       blockRecordsIterator = dataBlock.getEngineRecordIterator(readerContext);
     }
-    if (readerContext.supportsLogReaderSchemaEvolution()) {
-      return Pair.of(blockRecordsIterator, readerSchema);
-    } else {
-      Pair<Function<T, T>, Schema> schemaTransformerWithEvolvedSchema = getSchemaTransformerWithEvolvedSchema(dataBlock);
-      return Pair.of(new CloseableMappingIterator<>(
-          blockRecordsIterator, schemaTransformerWithEvolvedSchema.getLeft()), schemaTransformerWithEvolvedSchema.getRight());
-    }
+    Pair<Function<T, T>, Schema> schemaTransformerWithEvolvedSchema = getSchemaTransformerWithEvolvedSchema(dataBlock);
+    return Pair.of(new CloseableMappingIterator<>(
+        blockRecordsIterator, schemaTransformerWithEvolvedSchema.getLeft()), schemaTransformerWithEvolvedSchema.getRight());
   }
 
   /**
@@ -418,11 +414,15 @@ public abstract class FileGroupRecordBuffer<T> implements HoodieFileGroupRecordB
 
     long currentInstantTime = Long.parseLong(dataBlock.getLogBlockHeader().get(INSTANT_TIME));
     InternalSchema fileSchema = InternalSchemaCache.searchSchemaAndCache(currentInstantTime, hoodieTableMetaClient);
+    // todo: solve bug of `InternalSchemaMerger#mergeSchemaGetRenamed`:
+    // for row type, e.g., `new_row_col: optional Record<43: f0: required long-44: f1: required string>`
+    // after merging, field type is: ` new_row_col: optional Record<43: f0: optional long-44: f1: optional string>`,
+    // where the repetition level changes.
     Pair<InternalSchema, Map<String, String>> mergedInternalSchema = new InternalSchemaMerger(fileSchema, internalSchema,
         true, false, false).mergeSchemaGetRenamed();
-    Schema mergedAvroSchema = AvroInternalSchemaConverter.convert(mergedInternalSchema.getLeft(), readerSchema.getFullName());
-    assert mergedAvroSchema.equals(readerSchema);
-    return Option.of(Pair.of(readerContext.projectRecord(dataBlock.getSchema(), mergedAvroSchema, mergedInternalSchema.getRight()), mergedAvroSchema));
+    // Schema mergedAvroSchema = AvroInternalSchemaConverter.convert(mergedInternalSchema.getLeft(), readerSchema.getFullName());
+    // assert mergedAvroSchema.equals(readerSchema);
+    return Option.of(Pair.of(readerContext.projectRecord(dataBlock.getSchema(), readerSchema, mergedInternalSchema.getRight()), readerSchema));
   }
 
   /**

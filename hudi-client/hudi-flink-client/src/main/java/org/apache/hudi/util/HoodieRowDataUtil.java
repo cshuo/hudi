@@ -21,6 +21,7 @@ package org.apache.hudi.util;
 import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.collection.Pair;
+import org.apache.hudi.common.util.collection.Triple;
 import org.apache.hudi.exception.HoodieException;
 import org.apache.hudi.util.RowDataToAvroConverters.RowDataToAvroConverter;
 
@@ -28,6 +29,7 @@ import org.apache.avro.Schema;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.types.logical.LogicalType;
+import org.apache.flink.types.Row;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -42,6 +44,8 @@ public class HoodieRowDataUtil {
   private static final Map<Pair<Schema, String>, RowData.FieldGetter> FIELD_GETTER_CACHE = new ConcurrentHashMap<>();
   private static final Map<Pair<Schema, String>, UnaryOperator<Object>> FIELD_CONVERTER_CACHE = new ConcurrentHashMap<>();
   private static final Map<Schema, RowData.FieldGetter[]> ALL_FIELD_GETTERS_CACHE = new ConcurrentHashMap<>();
+  // key: <fileSchema, querySchema, renamedCols> -> val: transforming operator
+  private static final Map<Triple<Schema, Schema, Map<String, String>>, UnaryOperator<RowData>> ROWDATA_PROJECTION_CACHE = new ConcurrentHashMap<>();
 
   /**
    * Utils to get FieldGetter from cache.
@@ -118,5 +122,13 @@ public class HoodieRowDataUtil {
       ALL_FIELD_GETTERS_CACHE.put(schema, fieldGetters);
     }
     return fieldGetters;
+  }
+
+  public static UnaryOperator<RowData> getProjection(Schema from, Schema to, Map<String, String> renamedColumns) {
+    Triple<Schema, Schema, Map<String, String>> cacheKey = Triple.of(from, to, renamedColumns);
+    UnaryOperator<RowData> projectionOp = ROWDATA_PROJECTION_CACHE.get(cacheKey);
+    if (projectionOp == null) {
+    }
+    return projectionOp;
   }
 }

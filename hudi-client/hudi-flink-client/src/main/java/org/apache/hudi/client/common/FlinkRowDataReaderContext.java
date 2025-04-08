@@ -96,15 +96,11 @@ public class FlinkRowDataReaderContext extends HoodieReaderContext<RowData> {
       Schema dataSchema,
       Schema requiredSchema,
       HoodieStorage storage) throws IOException {
-    // dataSchema and requiredSchema for log data block is the write schema stored in block header,
-    // set them with table schema and required schema from schema handler to support schema evolution.
     boolean isLogFile = FSUtils.isLogFile(filePath);
-    if (isLogFile) {
-      dataSchema = getSchemaHandler().getTableSchema();
-      requiredSchema = getSchemaHandler().getRequiredSchema();
-    }
     RowDataFileReaderFactories.Factory readerFactory = RowDataFileReaderFactories.getFactory(HoodieFileFormat.PARQUET);
-    RowDataFileReader fileReader = readerFactory.createFileReader(internalSchemaManager, flinkConf);
+    // disable schema evolution for log file reader, and follows schema evolution in `FileGroupRecordBuffer`
+    InternalSchemaManager schemaManager = isLogFile ? InternalSchemaManager.DISABLED : internalSchemaManager;
+    RowDataFileReader fileReader = readerFactory.createFileReader(schemaManager, flinkConf);
 
     List<String> fieldNames = dataSchema.getFields().stream().map(Schema.Field::name).collect(Collectors.toList());
     List<DataType> fieldTypes = dataSchema.getFields().stream().map(
@@ -121,7 +117,7 @@ public class FlinkRowDataReaderContext extends HoodieReaderContext<RowData> {
       // the rowdata get from the iterator should be copied because:
       // 1. the underlying flink parquet reader is vector reader, which reads records as `ColumnarRowData`, and `ColumnarRowData` is a reused object.
       // 2. the rowdata read from the iterator will be cached in `FileGroupRecordBuffer`
-      RowType requiredRowType = (RowType) AvroSchemaConverter.convertToDataType(getSchemaHandler().getRequiredSchema()).getLogicalType();
+      RowType requiredRowType = (RowType) AvroSchemaConverter.convertToDataType(requiredSchema).getLogicalType();
       rowDataSerializer = new RowDataSerializer(requiredRowType);
       return new CloseableMappingIterator<>(closableIterator, new Function<RowData, RowData>() {
         @Override
@@ -244,14 +240,7 @@ public class FlinkRowDataReaderContext extends HoodieReaderContext<RowData> {
   }
 
   @Override
-  public boolean supportsLogReaderSchemaEvolution() {
-    return true;
-  }
-
-  @Override
   public UnaryOperator<RowData> projectRecord(Schema from, Schema to, Map<String, String> renamedColumns) {
-    // flink rowdata file reader already deals with schema evolution,
-    // so there is no need to compose a transformer for evolution.
     return UnaryOperator.identity();
   }
 
