@@ -93,6 +93,7 @@ public class HoodieFlinkCompactor {
       }
     } else {
       LOG.info("Hoodie Flink Compactor running only single round");
+      System.out.println("Hoodie Flink Compactor running only single round");
       try {
         compactionScheduleService.compact();
       } catch (ApplicationExecutionException aee) {
@@ -237,6 +238,7 @@ public class HoodieFlinkCompactor {
       if (requested.isEmpty()) {
         // do nothing.
         LOG.info("No compaction plan scheduled, turns on the compaction plan schedule with --schedule option");
+        System.out.println("No compaction plan scheduled, turns on the compaction plan schedule with --schedule option");
         return;
       }
 
@@ -264,6 +266,8 @@ public class HoodieFlinkCompactor {
           .filter(pair -> validCompactionPlan(pair.getRight()))
           .collect(Collectors.toList());
 
+      System.out.println("compaction plan size: " + compactionPlans.size());
+
       if (compactionPlans.isEmpty()) {
         // No compaction plan, do nothing and return.
         LOG.info("No compaction plan for instant " + String.join(",", compactionInstantTimes));
@@ -280,6 +284,7 @@ public class HoodieFlinkCompactor {
           ? totalOperations
           : Math.min(conf.getInteger(FlinkOptions.COMPACTION_TASKS), totalOperations);
 
+      System.out.println("start compaction.");
       LOG.info("Start to compaction for instant " + compactionInstantTimes);
 
       // Mark instant as compaction inflight
@@ -303,6 +308,8 @@ public class HoodieFlinkCompactor {
           .setParallelism(1)
           .getTransformation()
           .setMaxParallelism(1);
+
+      System.out.println("start execute.");
 
       env.execute("flink_hudi_compaction_" + String.join(",", compactionInstantTimes));
     }
