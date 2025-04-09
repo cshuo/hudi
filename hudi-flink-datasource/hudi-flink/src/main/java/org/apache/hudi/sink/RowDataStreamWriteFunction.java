@@ -247,12 +247,13 @@ public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<Hood
    */
   private boolean doBufferRecord(String bucketID, HoodieFlinkInternalRow record) throws IOException {
     try {
+      double batchSize = this.config.get(FlinkOptions.WRITE_BATCH_SIZE);
       RowDataBucket bucket = this.buckets.computeIfAbsent(bucketID,
           k -> new RowDataBucket(
               bucketID,
               BufferUtils.createBuffer(rowType, memorySegmentPool),
               getBucketInfo(record),
-              this.config.get(FlinkOptions.WRITE_BATCH_SIZE)));
+              batchSize));
 
       return bucket.writeRow(record.getRowData());
     } catch (MemoryPagesExhaustedException e) {
@@ -348,6 +349,7 @@ public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<Hood
     }
 
     ValidationUtils.checkState(!bucket.isEmpty(), "Data bucket to flush has no buffering records");
+    LOG.info("flush bucket: {}, size: {}.", bucket.getBucketInfo(), bucket.getCount());
     final List<WriteStatus> writeStatus = writeRecords(instant, bucket);
     final WriteMetadataEvent event = WriteMetadataEvent.builder()
         .taskID(taskID)

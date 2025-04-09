@@ -72,6 +72,10 @@ public class RowDataBucket {
     return detector.totalSize;
   }
 
+  public long getCount() {
+    return dataBuffer.size();
+  }
+
   public boolean isEmpty() {
     return dataBuffer.isEmpty();
   }

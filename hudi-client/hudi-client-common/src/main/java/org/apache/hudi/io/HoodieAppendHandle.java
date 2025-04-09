@@ -656,7 +656,7 @@ public class HoodieAppendHandle<T, I, K, O> extends HoodieWriteHandle<T, I, K, O
     if (numberOfRecords >= (maxBlockSize / averageRecordSize)) {
       // Recompute averageRecordSize before writing a new block and update existing value with
       // avg of new and old
-      LOG.info("Flush log block to disk, the current avgRecordSize => " + averageRecordSize);
+      LOG.info("Flush log block to disk, the current avgRecordSize => {}, fileId: {}, partition: {}.", averageRecordSize, fileId, partitionPath);
       // Delete blocks will be appended after appending all the data blocks.
       appendDataAndDeleteBlocks(header, appendDeleteBlocks);
       estimatedNumberOfBytesWritten += averageRecordSize * numberOfRecords;
