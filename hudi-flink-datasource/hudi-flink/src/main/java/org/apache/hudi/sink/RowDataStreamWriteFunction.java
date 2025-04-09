@@ -247,13 +247,12 @@ public class RowDataStreamWriteFunction extends AbstractStreamWriteFunction<Hood
    */
   private boolean doBufferRecord(String bucketID, HoodieFlinkInternalRow record) throws IOException {
     try {
-      double batchSize = this.config.get(FlinkOptions.WRITE_BATCH_SIZE);
       RowDataBucket bucket = this.buckets.computeIfAbsent(bucketID,
           k -> new RowDataBucket(
               bucketID,
               BufferUtils.createBuffer(rowType, memorySegmentPool),
               getBucketInfo(record),
-              batchSize));
+              this.config.get(FlinkOptions.WRITE_BATCH_SIZE)));
 
       return bucket.writeRow(record.getRowData());
     } catch (MemoryPagesExhaustedException e) {
