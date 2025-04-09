@@ -213,12 +213,7 @@ public class FlinkRowDataReaderContext extends HoodieReaderContext<RowData> {
 
   @Override
   public RowData seal(RowData rowData) {
-    if (rowDataSerializer == null) {
-      RowType requiredRowType = (RowType) AvroSchemaConverter.convertToDataType(getSchemaHandler().getRequiredSchema()).getLogicalType();
-      rowDataSerializer = new RowDataSerializer(requiredRowType);
-    }
-    // copy is unnecessary if there is no caching in subsequent processing.
-    return rowDataSerializer.copy(rowData);
+    return rowData;
   }
 
   @Override
