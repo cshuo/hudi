@@ -80,46 +80,87 @@ public class WriteDemo {
                 miniCluster.getRestAddress().get().getHost(),
                 miniCluster.getRestAddress().get().getPort(),
                 envConf);
-            env.enableCheckpointing(60000, CheckpointingMode.EXACTLY_ONCE);
-            env.setParallelism(3);
+            env.enableCheckpointing(120000, CheckpointingMode.EXACTLY_ONCE);
+            env.setParallelism(4);
             EnvironmentSettings settings = EnvironmentSettings.newInstance().inStreamingMode().build();
             StreamTableEnvironment tEnv = StreamTableEnvironment.create(env, settings);
 
-            String srcDdl = "create temporary table src (a int, b bigint, c string) with " +
-                "('connector' = 'datagen', 'rows-per-second' = '1000', 'fields.a.kind' = 'sequence', 'fields.a.start' = '1', 'fields.a.end' = '200000')";
+            String srcDdl = "CREATE TABLE item_uv_pv_1d_source (\n" +
+                "    `item_id` BIGINT,\n" +
+                "    `item_name` STRING,\n" +
+                "    `item_click_uv_1d` BIGINT,\n" +
+                "    `item_click_pv_1d` BIGINT,\n" +
+                "    `item_like_uv_1d` BIGINT,\n" +
+                "    `item_like_pv_1d` BIGINT,\n" +
+                "    `item_cart_uv_1d` BIGINT,\n" +
+                "    `item_cart_pv_1d` BIGINT,\n" +
+                "    `item_share_uv_1d` BIGINT,\n" +
+                "    `item_share_pv_1d` BIGINT\n" +
+                ") WITH (\n" +
+                "    'connector' = 'datagen',\n" +
+                "    'number-of-rows' = '50000000',\n" +
+                "    'rows-per-second' = '999999999',\n" +
+                "    'fields.item_id.min' = '0',\n" +
+                "    'fields.item_id.max' = '99999999',\n" +
+                "    'fields.item_name.length' = '20',\n" +
+                "    'fields.item_click_uv_1d.min' = '0',\n" +
+                "    'fields.item_click_uv_1d.max' = '999999999',\n" +
+                "    'fields.item_click_pv_1d.min' = '0',\n" +
+                "    'fields.item_click_pv_1d.max' = '999999999',\n" +
+                "    'fields.item_like_uv_1d.min' = '0',\n" +
+                "    'fields.item_like_uv_1d.max' = '999999999',\n" +
+                "    'fields.item_like_pv_1d.min' = '0',\n" +
+                "    'fields.item_like_pv_1d.max' = '999999999',\n" +
+                "    'fields.item_cart_uv_1d.min' = '0',\n" +
+                "    'fields.item_cart_uv_1d.max' = '999999999',\n" +
+                "    'fields.item_cart_pv_1d.min' = '0',\n" +
+                "    'fields.item_cart_pv_1d.max' = '999999999',\n" +
+                "    'fields.item_share_uv_1d.min' = '0',\n" +
+                "    'fields.item_share_uv_1d.max' = '999999999',\n" +
+                "    'fields.item_share_pv_1d.min' = '0',\n" +
+                "    'fields.item_share_pv_1d.max' = '999999999'\n" +
+                ");";
             tEnv.executeSql(srcDdl);
 
-            String sinkDDL = "CREATE TABLE hudi_table(\n" +
-                "    ts BIGINT,\n" +
-                "    uuid VARCHAR(40) PRIMARY KEY NOT ENFORCED,\n" +
-                "    rider VARCHAR(20),\n" +
-                "    driver VARCHAR(20),\n" +
-                "    fare DOUBLE,\n" +
-                "    city VARCHAR(20)\n" +
-                ")\n" +
-                "PARTITIONED BY (`city`)\n" +
-                "WITH (\n" +
-                "'connector' = 'hudi', \n" +
+            tEnv.executeSql("CREATE VIEW item_uv_pv_1d AS\n" +
+                "SELECT\n" +
+                "    `item_id`,\n" +
+                "    SUBSTR(`item_name`, 0, MOD(`item_id`, 32) + 64) AS `item_name`,\n" +
+                "    `item_click_uv_1d`,\n" +
+                "    `item_click_pv_1d`,\n" +
+                "    `item_like_uv_1d`,\n" +
+                "    `item_like_pv_1d`,\n" +
+                "    `item_cart_uv_1d`,\n" +
+                "    `item_cart_pv_1d`,\n" +
+                "    `item_share_uv_1d`,\n" +
+                "    `item_share_pv_1d`,\n" +
+                "    NOW() AS `ts`\n" +
+                "FROM item_uv_pv_1d_source;");
+
+            String sinkDDL = "CREATE TABLE hudi_table(`item_id` BIGINT,\n" +
+                "    `item_name` STRING,\n" +
+                "    `item_click_uv_1d` BIGINT,\n" +
+                "    `item_click_pv_1d` BIGINT,\n" +
+                "    `item_like_uv_1d` BIGINT,\n" +
+                "    `item_like_pv_1d` BIGINT,\n" +
+                "    `item_cart_uv_1d` BIGINT,\n" +
+                "    `item_cart_pv_1d` BIGINT,\n" +
+                "    `item_share_uv_1d` BIGINT,\n" +
+                "    `item_share_pv_1d` BIGINT,\n" +
+                "    `ts` TIMESTAMP(3),\n" +
+                "    PRIMARY KEY (`item_id`) NOT ENFORCED)\n" +
+                "WITH ('connector' = 'hudi',\n" +
+                "  'write.rowdata.mode.enabled' = 'true',\n" +
                 "  'path' = 'file:///private/tmp/hudi_table',\n" +
-                "  'table.type' = 'COPY_ON_WRITE', \n" +
-                "  'hoodie.clean.async' = 'true', \n" +
-                "  'hoodie.cleaner.policy' = 'KEEP_LATEST_COMMITS', \n" +
-                "  'hoodie.clean.automatic' = 'true', \n" +
-                "  'hoodie.clean.max.commits' = '8', \n" +
-                "  'hoodie.clean.trigger.strategy' = 'NUM_COMMITS', \n" +
-                "  'hoodie.cleaner.parallelism' = '100', \n" +
-                "  'hoodie.cleaner.commits.retained' = '6', \n" +
-                "  'hoodie.index.type' = 'BUCKET',\n" +
-                "  'hoodie.index.bucket.engine' = 'SIMPLE', \n" +
-                "  'hoodie.bucket.index.num.buckets' = '16', \n" +
-                "  'hoodie.parquet.small.file.limit' = '104857600', \n" +
-                "  'hoodie.parquet.compression.codec' = 'snappy', \n" +
-                "  'hoodie.schema.on.read.enable' = 'true', \n" +
-                "  'hoodie.archive.automatic' = 'true', \n" +
-                "  'hoodie.keep.max.commits' = '45', \n" +
-                "  'hoodie.keep.min.commits' = '30')";
+                "  'table.type' = 'MERGE_ON_READ',\n" +
+                "  'index.type' = 'BUCKET',\n" +
+                "  'hoodie.bucket.index.num.buckets' = '2',\n" +
+                "  'write.tasks' = '2',\n" +
+                "  'hoodie.parquet.compression.codec' = 'snappy',\n" +
+                "  'compaction.schedule.enabled' = 'false',\n" +
+                "  'compaction.async.enabled' = 'false')";
             tEnv.executeSql(sinkDDL);
-            String query0 = "insert into hudi_table partition (city='20240128') select UNIX_TIMESTAMP(), concat('k-', cast(a as string)), c, c, cast(a as double) / b from src";
+            String query0 = "insert into hudi_table SELECT * FROM item_uv_pv_1d";
             TableResult result = tEnv.executeSql(query0);
 
             result.await();
