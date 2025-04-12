@@ -90,23 +90,30 @@ public class ReadDemo {
             EnvironmentSettings settings = EnvironmentSettings.newInstance().inBatchMode().build();
             StreamTableEnvironment tEnv = StreamTableEnvironment.create(env, settings);
 
-            String sinkDDL = "CREATE TABLE hudi_table(\n" +
-                "    ts BIGINT,\n" +
-                "    uuid VARCHAR(40) PRIMARY KEY NOT ENFORCED,\n" +
-                "    rider VARCHAR(20),\n" +
-                "    driver VARCHAR(20),\n" +
-                "    fare DOUBLE,\n" +
-                "    city VARCHAR(20)\n" +
-                ")\n" +
-                "PARTITIONED BY (`city`)\n" +
-                "WITH (\n" +
-                "  'connector' = 'hudi',\n" +
-                "  'read.start-commit' = 'earliest',\n" +
+            String sinkDDL = "CREATE TABLE hudi_table(`item_id` BIGINT,\n" +
+                "    `item_name` STRING,\n" +
+                "    `item_click_uv_1d` BIGINT,\n" +
+                "    `item_click_pv_1d` BIGINT,\n" +
+                "    `item_like_uv_1d` BIGINT,\n" +
+                "    `item_like_pv_1d` BIGINT,\n" +
+                "    `item_cart_uv_1d` BIGINT,\n" +
+                "    `item_cart_pv_1d` BIGINT,\n" +
+                "    `item_share_uv_1d` BIGINT,\n" +
+                "    `item_share_pv_1d` BIGINT,\n" +
+                "    `ts` TIMESTAMP(3),\n" +
+                "    PRIMARY KEY (`item_id`) NOT ENFORCED)\n" +
+                "WITH ('connector' = 'hudi',\n" +
+                "  'write.rowdata.mode.enabled' = 'true',\n" +
                 "  'path' = 'file:///private/tmp/hudi_table',\n" +
-                "  'table.type' = 'COPY_ON_WRITE'\n" +
-                ");";
+                "  'table.type' = 'MERGE_ON_READ',\n" +
+                "  'index.type' = 'BUCKET',\n" +
+                "  'hoodie.bucket.index.num.buckets' = '4',\n" +
+                "  'write.tasks' = '4',\n" +
+                "  'hoodie.parquet.compression.codec' = 'snappy',\n" +
+                "  'compaction.schedule.enabled' = 'false',\n" +
+                "  'compaction.async.enabled' = 'false')";
             tEnv.executeSql(sinkDDL);
-            String query0 = "select count(distinct uuid) from hudi_table where city = '20240128'";
+            String query0 = "select count(item_id) from hudi_table";
             Iterator<Row> res = tEnv.executeSql(query0).collect();
             System.out.println("### total rows: " + res.next());
         } catch (Exception e) {

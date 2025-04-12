@@ -46,7 +46,7 @@ public class WriteDemo {
                 .setConfiguration(conf)
                 .build();
 
-        String logOutputDirectory = "file:///private/tmp/log/";
+        String logOutputDirectory = "tmp/write/";
 
         File logOutputDir = new File(logOutputDirectory);
         if (!logOutputDir.exists()) {
@@ -74,7 +74,7 @@ public class WriteDemo {
             Configuration envConf = new Configuration();
             envConf.set(StateBackendOptions.STATE_BACKEND, "filesystem");
             envConf.set(CheckpointingOptions.CHECKPOINTS_DIRECTORY, "file:///private/tmp/cpt");
-            envConf.set(CoreOptions.FLINK_LOG_DIR, "file:///private/tmp/log");
+            envConf.set(CoreOptions.FLINK_LOG_DIR, "tmp/write/");
             envConf.setString("rest.profiling.enabled", "true");
             StreamExecutionEnvironment env = StreamExecutionEnvironment.createRemoteEnvironment(
                 miniCluster.getRestAddress().get().getHost(),
@@ -98,10 +98,10 @@ public class WriteDemo {
                 "    `item_share_pv_1d` BIGINT\n" +
                 ") WITH (\n" +
                 "    'connector' = 'datagen',\n" +
-                "    'number-of-rows' = '50000000',\n" +
+                "    'number-of-rows' = '5000000',\n" +
                 "    'rows-per-second' = '999999999',\n" +
                 "    'fields.item_id.min' = '0',\n" +
-                "    'fields.item_id.max' = '99999999',\n" +
+                "    'fields.item_id.max' = '999999',\n" +
                 "    'fields.item_name.length' = '20',\n" +
                 "    'fields.item_click_uv_1d.min' = '0',\n" +
                 "    'fields.item_click_uv_1d.max' = '999999999',\n" +
@@ -154,8 +154,8 @@ public class WriteDemo {
                 "  'path' = 'file:///private/tmp/hudi_table',\n" +
                 "  'table.type' = 'MERGE_ON_READ',\n" +
                 "  'index.type' = 'BUCKET',\n" +
-                "  'hoodie.bucket.index.num.buckets' = '2',\n" +
-                "  'write.tasks' = '2',\n" +
+                "  'hoodie.bucket.index.num.buckets' = '4',\n" +
+                "  'write.tasks' = '4',\n" +
                 "  'hoodie.parquet.compression.codec' = 'snappy',\n" +
                 "  'compaction.schedule.enabled' = 'false',\n" +
                 "  'compaction.async.enabled' = 'false')";
