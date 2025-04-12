@@ -42,6 +42,7 @@ public class HoodieRowDataUtil {
   private static final Map<Pair<Schema, String>, RowData.FieldGetter> FIELD_GETTER_CACHE = new ConcurrentHashMap<>();
   private static final Map<Pair<Schema, String>, UnaryOperator<Object>> FIELD_CONVERTER_CACHE = new ConcurrentHashMap<>();
   private static final Map<Schema, RowData.FieldGetter[]> ALL_FIELD_GETTERS_CACHE = new ConcurrentHashMap<>();
+  private static final Map<Schema, RowDataToAvroConverter> ROWDATA_CONVERTER_CACHE = new ConcurrentHashMap<>();
 
   /**
    * Utils to get FieldGetter from cache.
@@ -95,6 +96,16 @@ public class HoodieRowDataUtil {
       FIELD_CONVERTER_CACHE.put(cacheKey, fieldConverter);
     }
     return fieldConverter;
+  }
+
+  public static RowDataToAvroConverter getRowDataToAvroConverter(Schema schema, boolean utcTimezone) {
+    RowDataToAvroConverter converter = ROWDATA_CONVERTER_CACHE.get(schema);
+    if (converter == null) {
+      LogicalType rowType = AvroSchemaConverter.convertToDataType(schema).getLogicalType();
+      converter = RowDataToAvroConverters.createConverter(rowType, utcTimezone);
+      ROWDATA_CONVERTER_CACHE.put(schema, converter);
+    }
+    return converter;
   }
 
   /**

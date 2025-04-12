@@ -18,6 +18,7 @@
 
 package org.apache.hudi.client.model;
 
+import org.apache.hudi.common.config.HoodieStorageConfig;
 import org.apache.hudi.common.model.HoodieAvroIndexedRecord;
 import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieOperation;
@@ -26,11 +27,14 @@ import org.apache.hudi.common.model.MetadataValues;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.collection.Pair;
 import org.apache.hudi.keygen.BaseKeyGenerator;
+import org.apache.hudi.util.HoodieRowDataUtil;
+import org.apache.hudi.util.RowDataToAvroConverters;
 
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.IndexedRecord;
 import org.apache.flink.table.data.RowData;
 
 import java.io.IOException;
@@ -186,6 +190,9 @@ public class HoodieFlinkRecord extends HoodieRecord<RowData> {
 
   @Override
   public Option<HoodieAvroIndexedRecord> toIndexedRecord(Schema recordSchema, Properties props) throws IOException {
-    throw new UnsupportedOperationException("Not supported for " + this.getClass().getSimpleName());
+    boolean utcTimezone = Boolean.parseBoolean(props.getProperty(
+        HoodieStorageConfig.PARQUET_WRITE_UTC_TIMEZONE.key(), HoodieStorageConfig.PARQUET_WRITE_UTC_TIMEZONE.defaultValue().toString()));
+    RowDataToAvroConverters.RowDataToAvroConverter converter = HoodieRowDataUtil.getRowDataToAvroConverter(recordSchema, utcTimezone);
+    return Option.of(new HoodieAvroIndexedRecord(getKey(), (IndexedRecord) converter.convert(recordSchema, getData()), getOperation(), getMetadata()));
   }
 }
