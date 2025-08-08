@@ -57,6 +57,7 @@ import org.apache.spark.sql.types.StructType;
 import org.apache.spark.unsafe.types.UTF8String;
 import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -78,6 +79,7 @@ import static org.apache.hudi.common.table.HoodieTableConfig.PRECOMBINE_FIELDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -966,5 +968,48 @@ class TestBufferedRecordMerger extends SparkClientFunctionalTestHarness {
       }
     }
     return schema;
+  }
+  // ============================================================================
+  // Additional Validation Tests (newly added)
+  // NOTE: Tests use JUnit Jupiter (JUnit 5) and Mockito per project conventions.
+  // ============================================================================
+  @Test
+  void testGetSchemaFromBufferRecord_invalidIdThrows() {
+    DummyRecordContext ctx = new DummyRecordContext(tableConfig);
+    InternalRow row = createFullRecord("id", "name", 1, "city", 1L);
+    BufferedRecord<InternalRow> buffered = new BufferedRecord<>(RECORD_KEY, ORDERING_VALUE, row, 999, false);
+    RuntimeException ex = assertThrows(RuntimeException.class, () -> ctx.getSchemaFromBufferRecord(buffered));
+    assertTrue(ex.getMessage().contains("Schema id is illegal"));
+  }
+  @Test
+  void testConstructHoodieRecord_buildsEmptyAndSparkRecord() {
+    DummyRecordContext ctx = new DummyRecordContext(tableConfig);
+    InternalRow row = createFullRecord("id", "Name", 10, "City", 100L);
+    BufferedRecord<InternalRow> br = new BufferedRecord<>(RECORD_KEY, ORDERING_VALUE, row, 1, false);
+    HoodieRecord<InternalRow> hoodieRecord = ctx.constructHoodieRecord(br, PARTITION_PATH);
+    assertTrue(hoodieRecord instanceof HoodieSparkRecord);
+    assertEquals(RECORD_KEY, hoodieRecord.getRecordKey().getRecordKey());
+    assertEquals(PARTITION_PATH, hoodieRecord.getRecordKey().getPartitionPath());
+    BufferedRecord<InternalRow> deleteBuf = new BufferedRecord<>(RECORD_KEY, ORDERING_VALUE, row, 1, true);
+    HoodieRecord<InternalRow> delRecord = ctx.constructHoodieRecord(deleteBuf, PARTITION_PATH);
+    assertTrue(delRecord instanceof HoodieEmptyRecord);
+    assertEquals(RECORD_KEY, delRecord.getRecordKey().getRecordKey());
+    assertEquals(PARTITION_PATH, delRecord.getRecordKey().getPartitionPath());
+  }
+  @Test
+  void testMergeWithEngineRecord_appliesUpdatesAndKeepsBaseValues() {
+    DummyRecordContext ctx = new DummyRecordContext(tableConfig);
+    InternalRow base = createFullRecord("id", "Old", 25, "City", 111L);
+    BufferedRecord<InternalRow> baseBuf = new BufferedRecord<>(RECORD_KEY, ORDERING_VALUE, base, 1, false);
+    Schema schema = SCHEMAS.get(0);
+    java.util.Map<Integer, Object> updates = new java.util.HashMap<>();
+    updates.put(1, UTF8String.fromString("New Name"));
+    updates.put(4, 999L);
+    InternalRow merged = ctx.mergeWithEngineRecord(schema, updates, baseBuf);
+    assertEquals("id", merged.getUTF8String(0).toString());
+    assertEquals("New Name", merged.getUTF8String(1).toString());
+    assertEquals(25, merged.getInt(2));
+    assertEquals("City", merged.getUTF8String(3).toString());
+    assertEquals(999L, merged.getLong(4));
   }
 }

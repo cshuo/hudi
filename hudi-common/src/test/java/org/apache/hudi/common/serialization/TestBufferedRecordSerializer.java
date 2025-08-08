@@ -38,8 +38,133 @@ import org.junit.jupiter.params.provider.EnumSource;
 
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.Arrays;
+import java.nio.charset.StandardCharsets;
 
 public class TestBufferedRecordSerializer {
+  @Test
+  void testNonNullRecordWithDeleteFlag() throws IOException {
+    GenericRecord rec = buildSimpleRecord("mark", 9, "gray");
+    AvroRecordSerializer avroRecordSerializer = new AvroRecordSerializer(i -> SchemaTestUtil.getSimpleSchema());
+    BufferedRecordSerializer<IndexedRecord> serializer = new BufferedRecordSerializer<>(avroRecordSerializer);
+    BufferedRecord<IndexedRecord> bufferedRecord = new BufferedRecord<>("rk-del", 9L, rec, 1, true);
+    bufferedRecord.setHoodieOperation(HoodieOperation.UPDATE_BEFORE);
+    byte[] bytes = serializer.serialize(bufferedRecord);
+    BufferedRecord<IndexedRecord> decoded = serializer.deserialize(bytes);
+    Assertions.assertTrue(decoded.isDelete(), "isDelete flag should be preserved");
+    Assertions.assertEquals(HoodieOperation.UPDATE_BEFORE, decoded.getHoodieOperation());
+    Assertions.assertEquals(bufferedRecord.getRecord().toString(), decoded.getRecord() == null ? null : decoded.getRecord().toString());
+  }
+
+  @Test
+  void testLargePayloadRoundTrip() throws IOException {
+    char[] chars = new char[5000];
+    Arrays.fill(chars, x);
+    String largeColor = new String(chars);
+    GenericRecord rec = buildSimpleRecord("large", 1, largeColor);
+    AvroRecordSerializer avroRecordSerializer = new AvroRecordSerializer(i -> SchemaTestUtil.getSimpleSchema());
+    BufferedRecordSerializer<IndexedRecord> serializer = new BufferedRecordSerializer<>(avroRecordSerializer);
+    BufferedRecord<IndexedRecord> bufferedRecord = new BufferedRecord<>("rk-large", 1L, rec, 1, false);
+    byte[] bytes = serializer.serialize(bufferedRecord);
+    BufferedRecord<IndexedRecord> decoded = serializer.deserialize(bytes);
+    Assertions.assertEquals(bufferedRecord.getRecord().toString(), decoded.getRecord().toString());
+  }
+
+  @Test
+  void testDeleteRecordWithNullPartitionSerAndDe() throws IOException {
+    DeleteRecord del = DeleteRecord.create("del_id", null, 555L);
+    BufferedRecord<IndexedRecord> bufferedRecord = BufferedRecords.fromDeleteRecord(del, 10);
+    bufferedRecord.setHoodieOperation(HoodieOperation.DELETE);
+    AvroRecordSerializer avroRecordSerializer = new AvroRecordSerializer(i -> SchemaTestUtil.getSimpleSchema());
+    BufferedRecordSerializer<IndexedRecord> serializer = new BufferedRecordSerializer<>(avroRecordSerializer);
+    byte[] bytes = serializer.serialize(bufferedRecord);
+    BufferedRecord<IndexedRecord> decoded = serializer.deserialize(bytes);
+    Assertions.assertEquals(bufferedRecord.getRecordKey(), decoded.getRecordKey());
+    Assertions.assertEquals(bufferedRecord.getOrderingValue(), decoded.getOrderingValue());
+    Assertions.assertTrue(decoded.isDelete(), "Decoded record should be marked as delete");
+    Assertions.assertNull(decoded.getRecord(), "Delete record should not carry an Avro payload");
+  }
+
+  @Test
+  void testHoodieMetadataRecordWithMapRoundTrip() throws IOException {
+    HoodieMetadataRecord metadataRecord = new HoodieMetadataRecord("__all_partitions__", 3, new HashMap<>(), null, null, null, null);
+    AvroRecordSerializer avroRecordSerializer = new AvroRecordSerializer(i -> HoodieMetadataRecord.SCHEMA$);
+    BufferedRecordSerializer<IndexedRecord> serializer = new BufferedRecordSerializer<>(avroRecordSerializer);
+    BufferedRecord<IndexedRecord> bufferedRecord = new BufferedRecord<>("__all_partitions__", 3L, metadataRecord, 3, false);
+    byte[] bytes = serializer.serialize(bufferedRecord);
+    BufferedRecord<IndexedRecord> decoded = serializer.deserialize(bytes);
+    Assertions.assertEquals(bufferedRecord.getRecordKey(), decoded.getRecordKey());
+    Assertions.assertEquals(bufferedRecord.getOrderingValue(), decoded.getOrderingValue());
+    Assertions.assertEquals(bufferedRecord.getSchemaId(), decoded.getSchemaId());
+    Assertions.assertEquals(bufferedRecord.isDelete(), decoded.isDelete());
+    Assertions.assertEquals(bufferedRecord.getHoodieOperation(), decoded.getHoodieOperation());
+    for (int i = 0; i < metadataRecord.getSchema().getFields().size(); i++) {
+      Assertions.assertEquals(metadataRecord.get(i), decoded.getRecord().get(i));
+    }
+  }
+
+  @Test
+  void testNonDefaultSchemaIdRoundTrip() throws IOException {
+    GenericRecord rec = buildSimpleRecord("alice", 42, "green");
+    AvroRecordSerializer avroRecordSerializer = new AvroRecordSerializer(i -> SchemaTestUtil.getSimpleSchema());
+    BufferedRecordSerializer<IndexedRecord> serializer = new BufferedRecordSerializer<>(avroRecordSerializer);
+    BufferedRecord<IndexedRecord> bufferedRecord = new BufferedRecord<>("rk2", 42L, rec, 99, false);
+    byte[] bytes = serializer.serialize(bufferedRecord);
+    BufferedRecord<IndexedRecord> decoded = serializer.deserialize(bytes);
+    Assertions.assertEquals(99, decoded.getSchemaId());
+    Assertions.assertEquals(bufferedRecord.getRecord().toString(), decoded.getRecord().toString());
+  }
+
+  @ParameterizedTest
+  @EnumSource(value = HoodieOperation.class, names = {"INSERT", "UPSERT", "BULK_INSERT"})
+  void testHoodieOperationRoundTrip(HoodieOperation op) throws IOException {
+    GenericRecord rec = buildSimpleRecord("bob", 7, "blue");
+    AvroRecordSerializer avroRecordSerializer = new AvroRecordSerializer(i -> SchemaTestUtil.getSimpleSchema());
+    BufferedRecordSerializer<IndexedRecord> serializer = new BufferedRecordSerializer<>(avroRecordSerializer);
+    BufferedRecord<IndexedRecord> bufferedRecord = new BufferedRecord<>("rk", 7L, rec, 1, false);
+    bufferedRecord.setHoodieOperation(op);
+    byte[] bytes = serializer.serialize(bufferedRecord);
+    BufferedRecord<IndexedRecord> decoded = serializer.deserialize(bytes);
+    Assertions.assertEquals(op, decoded.getHoodieOperation(), "HoodieOperation should be preserved");
+    Assertions.assertEquals(bufferedRecord.getRecord().toString(), decoded.getRecord().toString());
+  }
+
+  @Test
+  void testNullRecordNonDeleteRoundTrip() throws IOException {
+    AvroRecordSerializer avroRecordSerializer = new AvroRecordSerializer(i -> SchemaTestUtil.getSimpleSchema());
+    BufferedRecordSerializer<IndexedRecord> serializer = new BufferedRecordSerializer<>(avroRecordSerializer);
+    BufferedRecord<IndexedRecord> bufferedRecord = new BufferedRecord<>("rk-null", 123L, null, 1, false);
+    byte[] bytes = serializer.serialize(bufferedRecord);
+    BufferedRecord<IndexedRecord> decoded = serializer.deserialize(bytes);
+    Assertions.assertEquals(bufferedRecord.getRecordKey(), decoded.getRecordKey());
+    Assertions.assertEquals(bufferedRecord.getOrderingValue(), decoded.getOrderingValue());
+    Assertions.assertEquals(bufferedRecord.getSchemaId(), decoded.getSchemaId());
+    Assertions.assertEquals(bufferedRecord.isDelete(), decoded.isDelete());
+    Assertions.assertEquals(bufferedRecord.getHoodieOperation(), decoded.getHoodieOperation());
+    Assertions.assertNull(decoded.getRecord(), "Record payload should remain null on round-trip");
+  }
+
+  @Test
+  void testDeserializeGarbageBytesThrows() throws IOException {
+    AvroRecordSerializer avroRecordSerializer = new AvroRecordSerializer(i -> SchemaTestUtil.getSimpleSchema());
+    BufferedRecordSerializer<IndexedRecord> serializer = new BufferedRecordSerializer<>(avroRecordSerializer);
+    byte[] garbage = "not-a-valid-buffered-record".getBytes(StandardCharsets.UTF_8);
+    Assertions.assertThrows(Exception.class, () -> serializer.deserialize(garbage),
+        "Deserializing garbage bytes should fail with an exception");
+  }
+
+  /**
+   * Build a simple Avro record using SchemaTestUtil.getSimpleSchema().
+   */
+  private GenericRecord buildSimpleRecord(String name, Integer favoriteNumber, String favoriteColor) throws IOException {
+    Schema schema = SchemaTestUtil.getSimpleSchema();
+    GenericRecord record = new GenericData.Record(schema);
+    record.put("name", name);
+    record.put("favorite_number", favoriteNumber);
+    record.put("favorite_color", favoriteColor);
+    return record;
+  }
+
   @Test
   void testAvroRecordSerAndDe() throws IOException {
     Schema schema = SchemaTestUtil.getSimpleSchema();

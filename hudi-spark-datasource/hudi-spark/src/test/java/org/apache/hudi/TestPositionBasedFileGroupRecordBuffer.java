@@ -81,6 +81,8 @@ import static org.apache.hudi.common.model.WriteOperationType.INSERT;
 import static org.apache.hudi.common.table.log.block.HoodieLogBlock.HeaderMetadataType.BASE_FILE_INSTANT_TIME_OF_RECORD_POSITIONS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.mock;
 
@@ -89,6 +91,78 @@ public class TestPositionBasedFileGroupRecordBuffer extends SparkClientFunctiona
   private final UpdateProcessor updateProcessor = mock(UpdateProcessor.class);
   private Schema avroSchema;
   private PositionBasedFileGroupRecordBuffer<InternalRow> buffer;
+
+  private void prepareBuffer(RecordMergeMode mergeMode, String baseFileInstantTime, boolean shouldMergeUseRecordPosition) throws Exception {
+    Map<String, String> writeConfigs = new HashMap<>();
+    writeConfigs.put(HoodieStorageConfig.LOGFILE_DATA_BLOCK_FORMAT.key(), "parquet");
+    writeConfigs.put(KeyGeneratorOptions.RECORDKEY_FIELD_NAME.key(), "_row_key");
+    writeConfigs.put(KeyGeneratorOptions.PARTITIONPATH_FIELD_NAME.key(), "partition_path");
+    writeConfigs.put("hoodie.datasource.write.precombine.field", mergeMode.equals(RecordMergeMode.COMMIT_TIME_ORDERING) ? "" : "timestamp");
+    writeConfigs.put("hoodie.payload.ordering.field", "timestamp");
+    writeConfigs.put(HoodieTableConfig.HOODIE_TABLE_NAME_KEY, "hoodie_test");
+    writeConfigs.put("hoodie.insert.shuffle.parallelism", "4");
+    writeConfigs.put("hoodie.upsert.shuffle.parallelism", "4");
+    writeConfigs.put("hoodie.bulkinsert.shuffle.parallelism", "2");
+    writeConfigs.put("hoodie.delete.shuffle.parallelism", "1");
+    writeConfigs.put("hoodie.merge.small.file.group.candidates.limit", "0");
+    writeConfigs.put("hoodie.compact.inline", "false");
+    writeConfigs.put(HoodieWriteConfig.WRITE_RECORD_POSITIONS.key(), "true");
+    writeConfigs.put(HoodieWriteConfig.RECORD_MERGE_MODE.key(), mergeMode.name());
+    if (mergeMode.equals(RecordMergeMode.CUSTOM)) {
+      writeConfigs.put(HoodieWriteConfig.WRITE_PAYLOAD_CLASS_NAME.key(), CustomPayloadForTesting.class.getName());
+      writeConfigs.put(HoodieTableConfig.RECORD_MERGE_STRATEGY_ID.key(), HoodieRecordMerger.PAYLOAD_BASED_MERGE_STRATEGY_UUID);
+    }
+    commitToTable(dataGen.generateInserts("001", 100), INSERT.value(), writeConfigs);
+
+    String[] partitionPaths = dataGen.getPartitionPaths();
+    String[] partitionValues = new String[1];
+    String partitionPath = partitionPaths[0];
+    partitionValues[0] = partitionPath;
+
+    HoodieTableMetaClient metaClient = HoodieTableMetaClient.builder()
+        .setBasePath(basePath())
+        .setConf(storageConf())
+        .build();
+    avroSchema = new TableSchemaResolver(metaClient).getTableAvroSchema();
+
+    SparkColumnarFileReader reader = SparkAdapterSupport$.MODULE$.sparkAdapter().createParquetFileReader(false, spark().sessionState().conf(),
+        Map$.MODULE$.empty(), storageConf().unwrapAs(Configuration.class));
+    HoodieReaderContext<InternalRow> ctx = new SparkFileFormatInternalRowReaderContext(reader, JavaConverters.asScalaBufferConverter(Collections.<Filter>emptyList()).asScala().toSeq(),
+        JavaConverters.asScalaBufferConverter(Collections.<Filter>emptyList()).asScala().toSeq(), storageConf(), metaClient.getTableConfig());
+    ctx.setTablePath(basePath());
+    ctx.setLatestCommitTime(WriteClientTestUtils.createNewInstantTime());
+    ctx.setShouldMergeUseRecordPosition(shouldMergeUseRecordPosition);
+    ctx.setHasBootstrapBaseFile(false);
+    ctx.setHasLogFiles(true);
+    ctx.setNeedsBootstrapMerge(false);
+    if (mergeMode == RecordMergeMode.CUSTOM) {
+      ctx.setRecordMerger(Option.of(new CustomMerger()));
+    } else {
+      ctx.setRecordMerger(Option.empty());
+    }
+    ctx.setSchemaHandler(HoodieSparkUtils.gteqSpark3_5()
+        ? new ParquetRowIndexBasedSchemaHandler<>(ctx, avroSchema, avroSchema, Option.empty(), metaClient.getTableConfig(), new TypedProperties())
+        : new FileGroupReaderSchemaHandler<>(ctx, avroSchema, avroSchema, Option.empty(), metaClient.getTableConfig(), new TypedProperties()));
+    TypedProperties props = new TypedProperties();
+    props.put("hoodie.write.record.merge.mode", mergeMode.name());
+    props.setProperty(HoodieMemoryConfig.MAX_MEMORY_FOR_MERGE.key(),String.valueOf(HoodieMemoryConfig.MAX_MEMORY_FOR_MERGE.defaultValue()));
+    props.setProperty(HoodieMemoryConfig.SPILLABLE_MAP_BASE_PATH.key(), metaClient.getTempFolderPath());
+    props.setProperty(HoodieCommonConfig.SPILLABLE_DISK_MAP_TYPE.key(), ExternalSpillableMap.DiskMapType.ROCKS_DB.name());
+    props.setProperty(HoodieCommonConfig.DISK_MAP_BITCASK_COMPRESSION_ENABLED.key(), "false");
+    if (mergeMode.equals(RecordMergeMode.CUSTOM)) {
+      writeConfigs.put(HoodieWriteConfig.WRITE_PAYLOAD_CLASS_NAME.key(), CustomPayloadForTesting.class.getName());
+      writeConfigs.put(HoodieTableConfig.RECORD_MERGE_STRATEGY_ID.key(), HoodieRecordMerger.PAYLOAD_BASED_MERGE_STRATEGY_UUID);
+    }
+    buffer = new PositionBasedFileGroupRecordBuffer<>(
+        ctx,
+        metaClient,
+        mergeMode,
+        metaClient.getTableConfig().getPartialUpdateMode(),
+        baseFileInstantTime,
+        props,
+        Collections.singletonList("timestamp"),
+        updateProcessor);
+  }
 
   private void prepareBuffer(RecordMergeMode mergeMode, String baseFileInstantTime) throws Exception {
     Map<String, String> writeConfigs = new HashMap<>();
@@ -285,3 +359,91 @@ public class TestPositionBasedFileGroupRecordBuffer extends SparkClientFunctiona
   }
 }
 
+
+  @Test
+  public void testProcessDeleteBlockWithPositions_whenPositionMergingDisabled_fallsBackToRecordKey() throws Exception {
+    // Using the JUnit 5 framework and SparkClientFunctionalTestHarness
+    String baseFileInstantTime = "100";
+    // Explicitly disable position-based merging despite positions being present in header
+    prepareBuffer(RecordMergeMode.COMMIT_TIME_ORDERING, baseFileInstantTime, false);
+    HoodieDeleteBlock deleteBlock = getDeleteBlockWithPositions(baseFileInstantTime);
+
+    buffer.processDeleteBlock(deleteBlock);
+
+    // Even though positions exist, since shouldMergeUseRecordPosition is false, positions should not be used
+    assertEquals(50, buffer.getLogRecords().size(), "Expected 50 delete entries recorded");
+    // Spot check that position-indexed lookup should not be available (position-based get should be null)
+    assertNull(buffer.getLogRecords().get(0L), "Position-indexed entry should be null when position merging disabled");
+  }
+
+  @Test
+  public void testProcessDeleteBlockWithPositions_differentBaseInstantAndPositionMergingDisabled() throws Exception {
+    String baseFileInstantTime = "101";
+    prepareBuffer(RecordMergeMode.COMMIT_TIME_ORDERING, baseFileInstantTime, false);
+    HoodieDeleteBlock deleteBlock = getDeleteBlockWithPositions(baseFileInstantTime + "9");
+
+    buffer.processDeleteBlock(deleteBlock);
+
+    // Mismatch in base instant time AND position merging disabled -> should fallback to record-key indexing
+    assertEquals(50, buffer.getLogRecords().size(), "All delete entries should be recorded");
+    assertNull(buffer.getLogRecords().get(0L), "Position-based map should not be populated on mismatch + disabled merging");
+  }
+
+  @Test
+  public void testProcessDeleteBlockWithoutPositions_withCustomMerger() throws Exception {
+    String baseFileInstantTime = "102";
+    prepareBuffer(RecordMergeMode.CUSTOM, baseFileInstantTime);
+    HoodieDeleteBlock deleteBlock = getDeleteBlockWithoutPositions();
+
+    buffer.processDeleteBlock(deleteBlock);
+
+    // Without positions, records should still be tracked
+    assertEquals(50, buffer.getLogRecords().size(), "Expected 50 delete entries recorded without positions");
+    // For safety, position-indexed access should be empty since positions are -1 in our generator
+    assertNull(buffer.getLogRecords().get(0L), "Position-indexed entry should not exist when no positions are provided");
+  }
+
+  @Test
+  public void testProcessDeleteBlockWithPositions_boundaryConditions_firstAndLastPositions() throws Exception {
+    // Validate boundary edge cases on positions: first (0) and last (49)
+    String baseFileInstantTime = "103";
+    prepareBuffer(RecordMergeMode.COMMIT_TIME_ORDERING, baseFileInstantTime);
+    HoodieDeleteBlock deleteBlock = getDeleteBlockWithPositions(baseFileInstantTime);
+
+    buffer.processDeleteBlock(deleteBlock);
+
+    assertEquals(50, buffer.getLogRecords().size(), "All 50 delete entries must be present");
+    assertNotNull(buffer.getLogRecords().get(0L), "First position (0) should be present when instants match");
+    assertNotNull(buffer.getLogRecords().get(49L), "Last position (49) should be present when instants match");
+  }
+
+  @Test
+  public void testProcessDeleteBlockWithPositions_repeatedProcessingAddsEntries() throws Exception {
+    // Process two delete blocks of 25 each to simulate multiple log blocks contributing deletes.
+    // We re-use getDeleteBlockWithPositions but only take a subset to simulate 'partial' blocks.
+    String baseFileInstantTime = "104";
+    prepareBuffer(RecordMergeMode.COMMIT_TIME_ORDERING, baseFileInstantTime);
+
+    // Build a first block from the first 25 positions
+    List<DeleteRecord> all = getDeleteRecords();
+    List<Pair<DeleteRecord, Long>> firstHalf = new ArrayList<>();
+    for (int i = 0; i < 25; i++) {
+      firstHalf.add(Pair.of(all.get(i), (long) i));
+    }
+    HoodieDeleteBlock block1 = new HoodieDeleteBlock(firstHalf, getHeader(true, baseFileInstantTime));
+
+    // Build a second block from the next 25 positions
+    List<Pair<DeleteRecord, Long>> secondHalf = new ArrayList<>();
+    for (int i = 25; i < 50; i++) {
+      secondHalf.add(Pair.of(all.get(i), (long) i));
+    }
+    HoodieDeleteBlock block2 = new HoodieDeleteBlock(secondHalf, getHeader(true, baseFileInstantTime));
+
+    buffer.processDeleteBlock(block1);
+    assertEquals(25, buffer.getLogRecords().size(), "After first block, should have 25 entries");
+
+    buffer.processDeleteBlock(block2);
+    assertEquals(50, buffer.getLogRecords().size(), "After second block, should have 50 entries");
+    assertNotNull(buffer.getLogRecords().get(0L), "Position 0 exists");
+    assertNotNull(buffer.getLogRecords().get(49L), "Position 49 exists");
+  }
