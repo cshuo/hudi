@@ -83,7 +83,7 @@ public class BaseTestFileGroupRecordBuffer {
                                                                      HoodieReaderContext<IndexedRecord> readerContext,
                                                                      TypedProperties props, String[] orderingFieldNames) {
     return indexedRecords.stream().map(rec -> {
-      HoodieAvroIndexedRecord indexedRecord = new HoodieAvroIndexedRecord(new HoodieKey(rec.get(0).toString(), ""), rec, null);
+      HoodieAvroIndexedRecord indexedRecord = new HoodieAvroIndexedRecord(new HoodieKey(rec.get(0).toString(), ""), rec);
       return (BufferedRecord) BufferedRecord.forRecordWithContext(indexedRecord, readerContext.getSchemaHandler().getRequestedSchema(),
           readerContext.getRecordContext(), props, orderingFieldNames);
     }).collect(Collectors.toList());

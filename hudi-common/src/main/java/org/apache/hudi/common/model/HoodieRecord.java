@@ -391,6 +391,7 @@ public abstract class HoodieRecord<T> implements HoodieRecordCompatibilityInterf
     //       implementation
     writeRecordPayload(data, kryo, output);
     kryo.writeObjectOrNull(output, ignoreIndexUpdate, Boolean.class);
+    kryo.writeClassAndObject(output, orderingValue);
   }
 
   /**
@@ -407,6 +408,7 @@ public abstract class HoodieRecord<T> implements HoodieRecordCompatibilityInterf
     //       implementation
     this.data = readRecordPayload(kryo, input);
     this.ignoreIndexUpdate = kryo.readObjectOrNull(input, Boolean.class);
+    this.orderingValue = (Comparable<?>) kryo.readClassAndObject(input);
 
     // NOTE: We're always seal object after deserialization
     this.sealed = true;
