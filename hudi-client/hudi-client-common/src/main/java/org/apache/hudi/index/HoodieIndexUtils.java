@@ -430,14 +430,9 @@ public class HoodieIndexUtils {
       //the record was deleted
       return Option.empty();
     }
-    if (mergeResult.getRecord() == null) {
-      // SENTINEL case: the record did not match and merge case and should not be modified
+    if (mergeResult.getRecord() == null || mergeResult == existingBufferedRecord) {
+      // SENTINEL case: the record did not match the merge case and should not be modified or there is no update to the record
       return Option.of((HoodieRecord<R>) new HoodieAvroIndexedRecord(HoodieRecord.SENTINEL));
-    }
-
-    if (mergeResult.getRecord().equals(HoodieRecord.SENTINEL)) {
-      //the record did not match and merge case and should not be modified
-      return Option.of(existingRecordContext.constructHoodieRecord(mergeResult, incoming.getPartitionPath()));
     }
 
     //record is inserted or updated
@@ -492,10 +487,13 @@ public class HoodieIndexUtils {
         // the record was deleted
         return Option.empty();
       }
-      String partitionPath = inferPartitionPath(incoming, existing, writeSchemaWithMetaFields, keyGenerator, existingRecordContext, mergeResult);
+      Schema recordSchema = incomingRecordContext.getSchemaFromBufferRecord(mergeResult);
+      String partitionPath = inferPartitionPath(incoming, existing, recordSchema, keyGenerator, existingRecordContext, mergeResult);
       HoodieRecord<R> result = existingRecordContext.constructHoodieRecord(mergeResult, partitionPath);
+      HoodieRecord<R> withMeta = result.prependMetaFields(recordSchema, writeSchemaWithMetaFields,
+          new MetadataValues().setRecordKey(incoming.getRecordKey()).setPartitionPath(partitionPath), config.getProps());
       // the merged record needs to be converted back to the original payload
-      return Option.of(result.wrapIntoHoodieRecordPayloadWithParams(writeSchemaWithMetaFields, config.getProps(), Option.empty(),
+      return Option.of(withMeta.wrapIntoHoodieRecordPayloadWithParams(writeSchemaWithMetaFields, config.getProps(), Option.empty(),
           config.allowOperationMetadataField(), Option.empty(), false, Option.of(writeSchema)));
     }
   }
@@ -526,14 +524,14 @@ public class HoodieIndexUtils {
         .distinct(updatedConfig.getGlobalIndexReconcileParallelism());
     // define the buffered record merger.
     ReaderContextFactory<R> readerContextFactory = (ReaderContextFactory<R>) hoodieTable.getContext()
-        .getReaderContextFactoryForWrite(hoodieTable.getMetaClient(), config.getRecordMerger().getRecordType(), config.getProps());
+        .getReaderContextFactoryForWrite(hoodieTable.getMetaClient(), config.getRecordMerger().getRecordType(), config.getProps(), true);
     HoodieReaderContext<R> readerContext = readerContextFactory.getContext();
     RecordContext<R> incomingRecordContext = readerContext.getRecordContext();
     readerContext.initRecordMergerForIngestion(config.getProps());
     // Create a reader context for the existing records. In the case of merge-into commands, the incoming records
     // can be using an expression payload so here we rely on the table's configured payload class if it is required.
     ReaderContextFactory<R> readerContextFactoryForExistingRecords = (ReaderContextFactory<R>) hoodieTable.getContext()
-        .getReaderContextFactoryForWrite(hoodieTable.getMetaClient(), config.getRecordMerger().getRecordType(), hoodieTable.getMetaClient().getTableConfig().getProps());
+        .getReaderContextFactoryForWrite(hoodieTable.getMetaClient(), config.getRecordMerger().getRecordType(), hoodieTable.getMetaClient().getTableConfig().getProps(), true);
     RecordContext<R> existingRecordContext = readerContextFactoryForExistingRecords.getContext().getRecordContext();
     // merged existing records with current locations being set
     SerializableSchema writerSchema = new SerializableSchema(hoodieTable.getConfig().getWriteSchema());
