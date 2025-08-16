@@ -1,0 +1,13 @@
+diff --git a/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/functional/TestBasicSchemaEvolution.scala b/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/functional/TestBasicSchemaEvolution.scala
+index 5a0ade3dc0bc3..ced770865878a 100644
+--- a/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/functional/TestBasicSchemaEvolution.scala
++++ b/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/functional/TestBasicSchemaEvolution.scala
+@@ -54,7 +54,7 @@ class TestBasicSchemaEvolution extends HoodieSparkClientTestBase with ScalaAsser
+     HoodieWriteConfig.RECORD_MERGE_MODE.key() -> RecordMergeMode.COMMIT_TIME_ORDERING.name(),
+     DataSourceWriteOptions.RECORDKEY_FIELD.key -> "_row_key",
+     DataSourceWriteOptions.PARTITIONPATH_FIELD.key -> "partition",
+-    DataSourceWriteOptions.PRECOMBINE_FIELD.key -> "timestamp",
++    HoodieTableConfig.ORDERING_FIELDS.key -> "timestamp",
+     HoodieWriteConfig.TBL_NAME.key -> "hoodie_test",
+     HoodieMetadataConfig.ENABLE_METADATA_INDEX_PARTITION_STATS.key -> "true"
+   )

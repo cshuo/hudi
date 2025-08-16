@@ -1,0 +1,28 @@
+diff --git a/hudi-spark-datasource/hudi-spark/src/test/java/org/apache/hudi/functional/TestBootstrap.java b/hudi-spark-datasource/hudi-spark/src/test/java/org/apache/hudi/functional/TestBootstrap.java
+index e833919c30ac4..50c8c551f161a 100644
+--- a/hudi-spark-datasource/hudi-spark/src/test/java/org/apache/hudi/functional/TestBootstrap.java
++++ b/hudi-spark-datasource/hudi-spark/src/test/java/org/apache/hudi/functional/TestBootstrap.java
+@@ -35,6 +35,7 @@
+ import org.apache.hudi.common.model.HoodieKey;
+ import org.apache.hudi.common.model.HoodieRecord;
+ import org.apache.hudi.common.model.HoodieTableType;
++import org.apache.hudi.common.table.HoodieTableConfig;
+ import org.apache.hudi.common.table.timeline.HoodieInstant.State;
+ import org.apache.hudi.common.table.timeline.HoodieTimeline;
+ import org.apache.hudi.common.table.timeline.TimelineUtils;
+@@ -255,7 +256,6 @@ private void testBootstrapCommon(boolean partitioned, boolean deltaCommit, Effec
+     long timestamp = Instant.now().toEpochMilli();
+     Schema schema = generateNewDataSetAndReturnSchema(timestamp, totalRecords, partitions, bootstrapBasePath);
+     HoodieWriteConfig config = getConfigBuilder(schema.toString())
+-        .withPreCombineField("timestamp")
+         .withSchema(schema.toString())
+         .withKeyGenerator(keyGeneratorClass)
+         .withCompactionConfig(HoodieCompactionConfig.newBuilder()
+@@ -270,6 +270,7 @@ private void testBootstrapCommon(boolean partitioned, boolean deltaCommit, Effec
+         .withMetadataConfig(HoodieMetadataConfig.newBuilder().enable(true).withMaxNumDeltaCommitsBeforeCompaction(3)
+             .withMetadataIndexColumnStats(false).build()) // HUDI-8774
+         .build();
++    config.setValue(HoodieTableConfig.ORDERING_FIELDS, "timestamp");
+ 
+     SparkRDDWriteClient client = new SparkRDDWriteClient(context, config);
+     client.bootstrap(Option.empty());

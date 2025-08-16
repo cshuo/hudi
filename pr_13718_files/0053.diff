@@ -1,0 +1,13 @@
+diff --git a/hudi-hadoop-mr/src/main/java/org/apache/hudi/hadoop/realtime/HoodieParquetRealtimeInputFormat.java b/hudi-hadoop-mr/src/main/java/org/apache/hudi/hadoop/realtime/HoodieParquetRealtimeInputFormat.java
+index cdeacaada6afe..1abb604b52f0c 100644
+--- a/hudi-hadoop-mr/src/main/java/org/apache/hudi/hadoop/realtime/HoodieParquetRealtimeInputFormat.java
++++ b/hudi-hadoop-mr/src/main/java/org/apache/hudi/hadoop/realtime/HoodieParquetRealtimeInputFormat.java
+@@ -114,7 +114,7 @@ void addProjectionToJobConf(final RealtimeSplit realtimeSplit, final JobConf job
+           List<String> fieldsToAdd = new ArrayList<>();
+           if (!realtimeSplit.getDeltaLogPaths().isEmpty()) {
+             HoodieRealtimeInputFormatUtils.addVirtualKeysProjection(jobConf, realtimeSplit.getVirtualKeyInfo());
+-            fieldsToAdd.addAll(tableConfig.getPreCombineFields());
++            fieldsToAdd.addAll(tableConfig.getOrderingFields());
+           }
+ 
+           Option<String[]> partitions = tableConfig.getPartitionFields();

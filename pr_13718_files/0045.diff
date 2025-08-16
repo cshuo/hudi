@@ -1,0 +1,13 @@
+diff --git a/hudi-flink-datasource/hudi-flink/src/test/java/org/apache/hudi/table/catalog/TestHoodieCatalog.java b/hudi-flink-datasource/hudi-flink/src/test/java/org/apache/hudi/table/catalog/TestHoodieCatalog.java
+index 3d202be87c4d0..272b54b56f15c 100644
+--- a/hudi-flink-datasource/hudi-flink/src/test/java/org/apache/hudi/table/catalog/TestHoodieCatalog.java
++++ b/hudi-flink-datasource/hudi-flink/src/test/java/org/apache/hudi/table/catalog/TestHoodieCatalog.java
+@@ -383,7 +383,7 @@ void testCreateTableWithoutPreCombineKey() {
+             + "org.apache.hudi.common.model.DefaultHoodieRecordPayload");
+ 
+     Map<String, String> options2 = getDefaultCatalogOption();
+-    options2.put(FlinkOptions.PRECOMBINE_FIELD.key(), "not_exists");
++    options2.put(FlinkOptions.ORDERING_FIELDS.key(), "not_exists");
+     catalog = new HoodieCatalog("hudi", Configuration.fromMap(options2));
+     catalog.open();
+     ObjectPath tablePath2 = new ObjectPath(TEST_DEFAULT_DATABASE, "tb2");

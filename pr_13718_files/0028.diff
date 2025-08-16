@@ -1,0 +1,13 @@
+diff --git a/hudi-examples/hudi-examples-spark/src/main/java/org/apache/hudi/examples/spark/HoodieSparkBootstrapExample.java b/hudi-examples/hudi-examples-spark/src/main/java/org/apache/hudi/examples/spark/HoodieSparkBootstrapExample.java
+index 31f93601f9275..888817641622e 100644
+--- a/hudi-examples/hudi-examples-spark/src/main/java/org/apache/hudi/examples/spark/HoodieSparkBootstrapExample.java
++++ b/hudi-examples/hudi-examples-spark/src/main/java/org/apache/hudi/examples/spark/HoodieSparkBootstrapExample.java
+@@ -61,7 +61,7 @@ public static void main(String[] args) throws Exception {
+     df.write().format("hudi").option(HoodieWriteConfig.TBL_NAME.key(), tableName)
+         .option(DataSourceWriteOptions.OPERATION().key(), DataSourceWriteOptions.BOOTSTRAP_OPERATION_OPT_VAL())
+         .option(DataSourceWriteOptions.RECORDKEY_FIELD().key(), recordKey)
+-        .option(DataSourceWriteOptions.PRECOMBINE_FIELD().key(), preCombineField)
++        .option(HoodieTableConfig.ORDERING_FIELDS.key(), preCombineField)
+         .option(HoodieTableConfig.BASE_FILE_FORMAT.key(), HoodieFileFormat.ORC.name())
+         .option(HoodieBootstrapConfig.BASE_PATH.key(), basePath)
+         .option(HoodieWriteConfig.KEYGENERATOR_CLASS_NAME.key(), NonpartitionedKeyGenerator.class.getCanonicalName())

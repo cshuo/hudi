@@ -1,0 +1,13 @@
+diff --git a/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/functional/TestSparkDataSourceDAGExecution.scala b/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/functional/TestSparkDataSourceDAGExecution.scala
+index 0255b22c77e92..2410dd8df505f 100644
+--- a/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/functional/TestSparkDataSourceDAGExecution.scala
++++ b/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/functional/TestSparkDataSourceDAGExecution.scala
+@@ -56,7 +56,7 @@ class TestSparkDataSourceDAGExecution extends HoodieSparkClientTestBase with Sca
+     HoodieTableConfig.PARTITION_METAFILE_USE_BASE_FORMAT.key() -> "true",
+     DataSourceWriteOptions.RECORDKEY_FIELD.key -> "_row_key",
+     DataSourceWriteOptions.PARTITIONPATH_FIELD.key -> "partition",
+-    DataSourceWriteOptions.PRECOMBINE_FIELD.key -> "timestamp",
++    HoodieTableConfig.ORDERING_FIELDS.key -> "timestamp",
+     HoodieWriteConfig.TBL_NAME.key -> "hoodie_test",
+     HoodieMetadataConfig.ENABLE.key -> "false"
+   )

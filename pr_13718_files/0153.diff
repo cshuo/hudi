@@ -1,0 +1,19 @@
+diff --git a/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/spark/sql/hudi/dml/others/TestMergeModeCommitTimeOrdering.scala b/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/spark/sql/hudi/dml/others/TestMergeModeCommitTimeOrdering.scala
+index 2b359d483ba0f..60c2626e3ab77 100644
+--- a/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/spark/sql/hudi/dml/others/TestMergeModeCommitTimeOrdering.scala
++++ b/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/spark/sql/hudi/dml/others/TestMergeModeCommitTimeOrdering.scala
+@@ -75,12 +75,12 @@ class TestMergeModeCommitTimeOrdering extends HoodieSparkSqlTestBase {
+         HoodieTableConfig.RECORD_MERGE_STRATEGY_ID.key -> COMMIT_TIME_BASED_MERGE_STRATEGY_UUID)
+     }
+     val nonExistentConfigs = if (tableVersion.toInt == 6) {
+-      Seq(HoodieTableConfig.RECORD_MERGE_MODE.key, HoodieTableConfig.PRECOMBINE_FIELDS.key)
++      Seq(HoodieTableConfig.RECORD_MERGE_MODE.key, HoodieTableConfig.ORDERING_FIELDS.key)
+     } else {
+       if (setRecordMergeConfigs) {
+         Seq()
+       } else {
+-        Seq(HoodieTableConfig.PRECOMBINE_FIELDS.key)
++        Seq(HoodieTableConfig.ORDERING_FIELDS.key)
+       }
+     }
+ 

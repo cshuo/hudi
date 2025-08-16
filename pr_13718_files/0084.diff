@@ -1,0 +1,22 @@
+diff --git a/hudi-spark-datasource/hudi-spark/src/test/java/org/apache/hudi/client/functional/TestMetadataUtilRLIandSIRecordGeneration.java b/hudi-spark-datasource/hudi-spark/src/test/java/org/apache/hudi/client/functional/TestMetadataUtilRLIandSIRecordGeneration.java
+index 3f2ffcb36704b..cd8b2c9cdc274 100644
+--- a/hudi-spark-datasource/hudi-spark/src/test/java/org/apache/hudi/client/functional/TestMetadataUtilRLIandSIRecordGeneration.java
++++ b/hudi-spark-datasource/hudi-spark/src/test/java/org/apache/hudi/client/functional/TestMetadataUtilRLIandSIRecordGeneration.java
+@@ -209,7 +209,7 @@ public void testRecordGenerationAPIsForMOR() throws IOException {
+     HoodieTableType tableType = HoodieTableType.MERGE_ON_READ;
+     cleanupClients();
+     Properties props = new Properties();
+-    props.put(HoodieTableConfig.PRECOMBINE_FIELDS.key(), "timestamp");
++    props.put(HoodieTableConfig.ORDERING_FIELDS.key(), "timestamp");
+     initMetaClient(tableType, props);
+     cleanupTimelineService();
+     initTimelineService();
+@@ -307,7 +307,7 @@ public void testSecondaryIndexRecordGenerationForMOR() throws IOException {
+     HoodieTableType tableType = HoodieTableType.MERGE_ON_READ;
+     cleanupClients();
+     Properties props = new Properties();
+-    props.put(HoodieTableConfig.PRECOMBINE_FIELDS.key(), "timestamp");
++    props.put(HoodieTableConfig.ORDERING_FIELDS.key(), "timestamp");
+     initMetaClient(tableType, props);
+     cleanupTimelineService();
+     initTimelineService();

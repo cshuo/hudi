@@ -1,0 +1,13 @@
+diff --git a/hudi-spark-datasource/hudi-spark/src/test/java/org/apache/hudi/TestHoodieMergeHandleWithSparkMerger.java b/hudi-spark-datasource/hudi-spark/src/test/java/org/apache/hudi/TestHoodieMergeHandleWithSparkMerger.java
+index 8cdd41803a85a..633326bbe283e 100644
+--- a/hudi-spark-datasource/hudi-spark/src/test/java/org/apache/hudi/TestHoodieMergeHandleWithSparkMerger.java
++++ b/hudi-spark-datasource/hudi-spark/src/test/java/org/apache/hudi/TestHoodieMergeHandleWithSparkMerger.java
+@@ -86,7 +86,7 @@ public void setUp() throws IOException {
+     properties.setProperty(
+         HoodieTableConfig.BASE_FILE_FORMAT.key(),
+         HoodieTableConfig.BASE_FILE_FORMAT.defaultValue().toString());
+-    properties.setProperty(HoodieTableConfig.PRECOMBINE_FIELDS.key(), "record_key");
++    properties.setProperty(HoodieTableConfig.ORDERING_FIELDS.key(), "record_key");
+     properties.setProperty(KeyGeneratorOptions.PARTITIONPATH_FIELD_NAME.key(),"partition_path");
+     properties.setProperty(HoodieTableConfig.PARTITION_FIELDS.key(), "partition_path");
+     metaClient = getHoodieMetaClient(storageConf(), basePath(), HoodieTableType.MERGE_ON_READ, properties);

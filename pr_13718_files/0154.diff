@@ -1,0 +1,19 @@
+diff --git a/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/spark/sql/hudi/dml/others/TestMergeModeEventTimeOrdering.scala b/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/spark/sql/hudi/dml/others/TestMergeModeEventTimeOrdering.scala
+index 572eaa82744b4..d9d3282dc316c 100644
+--- a/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/spark/sql/hudi/dml/others/TestMergeModeEventTimeOrdering.scala
++++ b/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/spark/sql/hudi/dml/others/TestMergeModeEventTimeOrdering.scala
+@@ -71,12 +71,12 @@ class TestMergeModeEventTimeOrdering extends HoodieSparkSqlTestBase {
+       Map(
+         HoodieTableConfig.VERSION.key -> "6",
+         HoodieTableConfig.PAYLOAD_CLASS_NAME.key -> classOf[DefaultHoodieRecordPayload].getName,
+-        HoodieTableConfig.PRECOMBINE_FIELDS.key -> "ts"
++        HoodieTableConfig.ORDERING_FIELDS.key -> "ts"
+       )
+     } else {
+       Map(
+         HoodieTableConfig.VERSION.key -> String.valueOf(HoodieTableVersion.current().versionCode()),
+-        HoodieTableConfig.PRECOMBINE_FIELDS.key -> "ts",
++        HoodieTableConfig.ORDERING_FIELDS.key -> "ts",
+         HoodieTableConfig.RECORD_MERGE_MODE.key -> EVENT_TIME_ORDERING.name(),
+         HoodieTableConfig.PAYLOAD_CLASS_NAME.key -> classOf[DefaultHoodieRecordPayload].getName,
+         HoodieTableConfig.RECORD_MERGE_STRATEGY_ID.key -> EVENT_TIME_BASED_MERGE_STRATEGY_UUID)

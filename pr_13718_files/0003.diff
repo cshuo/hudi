@@ -1,0 +1,22 @@
+diff --git a/hudi-client/hudi-client-common/src/test/java/org/apache/hudi/table/upgrade/TestSevenToEightUpgradeHandler.java b/hudi-client/hudi-client-common/src/test/java/org/apache/hudi/table/upgrade/TestSevenToEightUpgradeHandler.java
+index a8c2103e46d31..66d03811b76fc 100644
+--- a/hudi-client/hudi-client-common/src/test/java/org/apache/hudi/table/upgrade/TestSevenToEightUpgradeHandler.java
++++ b/hudi-client/hudi-client-common/src/test/java/org/apache/hudi/table/upgrade/TestSevenToEightUpgradeHandler.java
+@@ -97,7 +97,7 @@ void testPropertyUpgrade() {
+     // Mock record merge mode configuration for merging behavior
+     when(tableConfig.contains(isA(ConfigProperty.class))).thenAnswer(i -> i.getArguments()[0].equals(PAYLOAD_CLASS_NAME));
+     when(tableConfig.getPayloadClass()).thenReturn(OverwriteWithLatestAvroPayload.class.getName());
+-    when(tableConfig.getPreCombineFieldsStr()).thenReturn(Option.empty());
++    when(tableConfig.getOrderingFieldsStr()).thenReturn(Option.empty());
+     SevenToEightUpgradeHandler.upgradeMergeMode(tableConfig, tablePropsToAdd);
+     assertTrue(tablePropsToAdd.containsKey(RECORD_MERGE_MODE));
+     assertNotNull(tablePropsToAdd.get(RECORD_MERGE_MODE));
+@@ -140,7 +140,7 @@ void testUpgradeMergeMode(String payloadClass, String preCombineField, String ex
+     Map<ConfigProperty, String> tablePropsToAdd = new HashMap<>();
+ 
+     when(tableConfig.getPayloadClass()).thenReturn(payloadClass);
+-    when(tableConfig.getPreCombineFieldsStr()).thenReturn(Option.ofNullable(preCombineField));
++    when(tableConfig.getOrderingFieldsStr()).thenReturn(Option.ofNullable(preCombineField));
+ 
+     SevenToEightUpgradeHandler.upgradeMergeMode(tableConfig, tablePropsToAdd);
+ 

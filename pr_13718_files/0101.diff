@@ -1,0 +1,21 @@
+diff --git a/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/TestInsertDedupPolicy.scala b/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/TestInsertDedupPolicy.scala
+index 62b02815e4901..376b38d6812da 100644
+--- a/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/TestInsertDedupPolicy.scala
++++ b/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/TestInsertDedupPolicy.scala
+@@ -21,6 +21,7 @@ package org.apache.hudi
+ 
+ import org.apache.hudi.DataSourceWriteOptions._
+ import org.apache.hudi.common.config.{HoodieMetadataConfig, HoodieReaderConfig}
++import org.apache.hudi.common.table.HoodieTableConfig
+ import org.apache.hudi.config.{HoodieCompactionConfig, HoodieWriteConfig}
+ import org.apache.hudi.exception.HoodieUpsertException
+ import org.apache.hudi.testutils.SparkClientFunctionalTestHarness
+@@ -70,7 +71,7 @@ class TestInsertDedupPolicy extends SparkClientFunctionalTestHarness {
+     val inserts = spark.createDataFrame(firstInsertData).toDF(columns: _*)
+     inserts.write.format("hudi").
+       option(RECORDKEY_FIELD.key, "key").
+-      option(PRECOMBINE_FIELD.key, "ts").
++      option(HoodieTableConfig.ORDERING_FIELDS.key, "ts").
+       option(TABLE_TYPE.key, tableType).
+       option(DataSourceWriteOptions.TABLE_NAME.key, "test_table").
+       option(HoodieCompactionConfig.INLINE_COMPACT.key, "false").

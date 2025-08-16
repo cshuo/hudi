@@ -1,0 +1,22 @@
+diff --git a/hudi-spark-datasource/hudi-spark/src/main/java/org/apache/hudi/bootstrap/SparkFullBootstrapDataProviderBase.java b/hudi-spark-datasource/hudi-spark/src/main/java/org/apache/hudi/bootstrap/SparkFullBootstrapDataProviderBase.java
+index 65af0c3543409..bccebeb2db469 100644
+--- a/hudi-spark-datasource/hudi-spark/src/main/java/org/apache/hudi/bootstrap/SparkFullBootstrapDataProviderBase.java
++++ b/hudi-spark-datasource/hudi-spark/src/main/java/org/apache/hudi/bootstrap/SparkFullBootstrapDataProviderBase.java
+@@ -72,7 +72,7 @@ public JavaRDD<HoodieRecord> generateInputRecords(String tableName, String sourc
+     HoodieRecordType recordType =  config.getRecordMerger().getRecordType();
+     Dataset inputDataset = sparkSession.read().format(getFormat()).option("basePath", sourceBasePath).load(filePaths);
+     KeyGenerator keyGenerator = HoodieSparkKeyGeneratorFactory.createKeyGenerator(props);
+-    String precombineKey = props.getString("hoodie.datasource.write.precombine.field");
++    String orderingFieldsStr = ConfigUtils.getOrderingFieldsStrDuringWrite(props);
+     String structName = tableName + "_record";
+     String namespace = "hoodie." + tableName;
+     if (recordType == HoodieRecordType.AVRO) {
+@@ -80,7 +80,7 @@ public JavaRDD<HoodieRecord> generateInputRecords(String tableName, String sourc
+           Option.empty());
+       return genericRecords.toJavaRDD().map(gr -> {
+         String orderingVal = HoodieAvroUtils.getNestedFieldValAsString(
+-            gr, precombineKey, false, props.getBoolean(
++            gr, orderingFieldsStr, false, props.getBoolean(
+                 KeyGeneratorOptions.KEYGENERATOR_CONSISTENT_LOGICAL_TIMESTAMP_ENABLED.key(),
+                 Boolean.parseBoolean(KeyGeneratorOptions.KEYGENERATOR_CONSISTENT_LOGICAL_TIMESTAMP_ENABLED.defaultValue())));
+         try {

@@ -1,0 +1,15 @@
+diff --git a/hudi-hadoop-mr/src/main/java/org/apache/hudi/hadoop/realtime/AbstractRealtimeRecordReader.java b/hudi-hadoop-mr/src/main/java/org/apache/hudi/hadoop/realtime/AbstractRealtimeRecordReader.java
+index fc4795d987639..f09898cb25914 100644
+--- a/hudi-hadoop-mr/src/main/java/org/apache/hudi/hadoop/realtime/AbstractRealtimeRecordReader.java
++++ b/hudi-hadoop-mr/src/main/java/org/apache/hudi/hadoop/realtime/AbstractRealtimeRecordReader.java
+@@ -90,8 +90,8 @@ public AbstractRealtimeRecordReader(RealtimeSplit split, JobConf job) {
+       metaClient = HoodieTableMetaClient.builder()
+           .setConf(HadoopFSUtils.getStorageConfWithCopy(jobConf)).setBasePath(split.getBasePath()).build();
+       payloadProps.putAll(metaClient.getTableConfig().getProps(true));
+-      if (metaClient.getTableConfig().getPreCombineFieldsStr().isPresent()) {
+-        this.payloadProps.setProperty(HoodiePayloadProps.PAYLOAD_ORDERING_FIELD_PROP_KEY, metaClient.getTableConfig().getPreCombineFieldsStr().orElse(null));
++      if (metaClient.getTableConfig().getOrderingFieldsStr().isPresent()) {
++        this.payloadProps.setProperty(HoodiePayloadProps.PAYLOAD_ORDERING_FIELD_PROP_KEY, metaClient.getTableConfig().getOrderingFieldsStr().orElse(null));
+       }
+       this.usesCustomPayload = usesCustomPayload(metaClient);
+       LOG.info("usesCustomPayload ==> " + this.usesCustomPayload);

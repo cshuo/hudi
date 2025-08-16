@@ -1,0 +1,22 @@
+diff --git a/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/spark/sql/hudi/procedure/TestTTLProcedure.scala b/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/spark/sql/hudi/procedure/TestTTLProcedure.scala
+index 0c4fb7a29b884..39a6deb6f59f8 100644
+--- a/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/spark/sql/hudi/procedure/TestTTLProcedure.scala
++++ b/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/spark/sql/hudi/procedure/TestTTLProcedure.scala
+@@ -31,7 +31,7 @@ import org.apache.hudi.config.HoodieWriteConfig
+ 
+ import org.apache.spark.api.java.JavaSparkContext
+ 
+-import java.util.Properties
++import java.util.{Collections, Properties}
+ 
+ import scala.collection.JavaConverters._
+ 
+@@ -114,7 +114,6 @@ class TestTTLProcedure extends HoodieSparkProcedureTestBase with SparkDatasetMix
+       .newBuilder
+       .withPath(basePath)
+       .withSchema(TRIP_EXAMPLE_SCHEMA)
+-      .withPreCombineField("_row_key")
+       .forTable(tableName)
+-
++      .withProps(Collections.singletonMap(HoodieTableConfig.ORDERING_FIELDS.key(), "_row_key"))
+ }

@@ -1,0 +1,13 @@
+diff --git a/hudi-integ-test/src/main/java/org/apache/hudi/integ/testsuite/SparkDataSourceContinuousIngestTool.java b/hudi-integ-test/src/main/java/org/apache/hudi/integ/testsuite/SparkDataSourceContinuousIngestTool.java
+index a98415fa372cb..59533772a9690 100644
+--- a/hudi-integ-test/src/main/java/org/apache/hudi/integ/testsuite/SparkDataSourceContinuousIngestTool.java
++++ b/hudi-integ-test/src/main/java/org/apache/hudi/integ/testsuite/SparkDataSourceContinuousIngestTool.java
+@@ -61,7 +61,7 @@
+  * hoodie.datasource.write.recordkey.field=VendorID
+  * hoodie.datasource.write.partitionpath.field=date_col
+  * hoodie.datasource.write.operation=upsert
+- * hoodie.datasource.write.precombine.field=tpep_pickup_datetime
++ * hoodie.datasource.write.precombine.fields=tpep_pickup_datetime
+  * hoodie.metadata.enable=false
+  * hoodie.table.name=hudi_tbl
+  */

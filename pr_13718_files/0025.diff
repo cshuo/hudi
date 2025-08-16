@@ -1,0 +1,13 @@
+diff --git a/hudi-common/src/test/java/org/apache/hudi/common/util/TestHoodieRecordUtils.java b/hudi-common/src/test/java/org/apache/hudi/common/util/TestHoodieRecordUtils.java
+index 96a299c9e6ab4..bf1b633c29673 100644
+--- a/hudi-common/src/test/java/org/apache/hudi/common/util/TestHoodieRecordUtils.java
++++ b/hudi-common/src/test/java/org/apache/hudi/common/util/TestHoodieRecordUtils.java
+@@ -71,7 +71,7 @@ void testGetOrderingFields() {
+ 
+     // Assert table config precombine fields are returned when props are not set with event time merge mode
+     HoodieTableConfig tableConfig = new HoodieTableConfig();
+-    tableConfig.setValue(HoodieTableConfig.PRECOMBINE_FIELDS, "tbl");
++    tableConfig.setValue(HoodieTableConfig.ORDERING_FIELDS, "tbl");
+     when(metaClient.getTableConfig()).thenReturn(tableConfig);
+     assertEquals(Collections.singletonList("tbl"), HoodieRecordUtils.getOrderingFieldNames(RecordMergeMode.EVENT_TIME_ORDERING, props, metaClient));
+ 

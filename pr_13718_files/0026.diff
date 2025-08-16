@@ -1,0 +1,13 @@
+diff --git a/hudi-examples/hudi-examples-k8s/src/main/java/org/apache/hudi/examples/k8s/quickstart/HudiDataStreamWriter.java b/hudi-examples/hudi-examples-k8s/src/main/java/org/apache/hudi/examples/k8s/quickstart/HudiDataStreamWriter.java
+index fc3fd5bb642fc..c71d2a9865cc7 100644
+--- a/hudi-examples/hudi-examples-k8s/src/main/java/org/apache/hudi/examples/k8s/quickstart/HudiDataStreamWriter.java
++++ b/hudi-examples/hudi-examples-k8s/src/main/java/org/apache/hudi/examples/k8s/quickstart/HudiDataStreamWriter.java
+@@ -107,7 +107,7 @@ private static Map<String, String> createHudiOptions(String basePath) {
+     options.put(FlinkOptions.PATH.key(), basePath);
+     options.put(HoodieCommonConfig.HOODIE_FS_ATOMIC_CREATION_SUPPORT.key(), "s3a");
+     options.put(FlinkOptions.TABLE_TYPE.key(), HoodieTableType.MERGE_ON_READ.name());
+-    options.put(FlinkOptions.PRECOMBINE_FIELD.key(), "ts");
++    options.put(FlinkOptions.ORDERING_FIELDS.key(), "ts");
+     options.put(FlinkOptions.RECORD_KEY_FIELD.key(), "uuid");
+     options.put(FlinkOptions.IGNORE_FAILED.key(), "true");
+     return options;

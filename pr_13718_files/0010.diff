@@ -1,0 +1,31 @@
+diff --git a/hudi-common/src/main/java/org/apache/hudi/common/table/log/AbstractHoodieLogRecordScanner.java b/hudi-common/src/main/java/org/apache/hudi/common/table/log/AbstractHoodieLogRecordScanner.java
+index 4266dd79d6bf8..97d0f41cca60d 100644
+--- a/hudi-common/src/main/java/org/apache/hudi/common/table/log/AbstractHoodieLogRecordScanner.java
++++ b/hudi-common/src/main/java/org/apache/hudi/common/table/log/AbstractHoodieLogRecordScanner.java
+@@ -104,8 +104,6 @@ public abstract class AbstractHoodieLogRecordScanner {
+   private final Option<String> partitionPathFieldOpt;
+   // Partition name override
+   private final Option<String> partitionNameOverrideOpt;
+-  // Pre-combining field
+-  protected final String preCombineFields;
+   // Stateless component for merging records
+   protected final HoodieRecordMerger recordMerger;
+   private final TypedProperties payloadProps;
+@@ -175,13 +173,12 @@ protected AbstractHoodieLogRecordScanner(HoodieStorage storage, String basePath,
+     // load class from the payload fully qualified class name
+     HoodieTableConfig tableConfig = this.hoodieTableMetaClient.getTableConfig();
+     this.payloadClassFQN = tableConfig.getPayloadClass();
+-    this.preCombineFields = tableConfig.getPreCombineFieldsStr().orElse(null);
++    String orderingFieldsStr = tableConfig.getOrderingFieldsStr().orElse(null);
+     // Log scanner merge log with precombine
+     TypedProperties props = new TypedProperties();
+-    if (preCombineFields != null) {
+-      props.setProperty(HoodiePayloadProps.PAYLOAD_ORDERING_FIELD_PROP_KEY, preCombineFields);
+-      props.setProperty(HoodieTableConfig.PRECOMBINE_FIELDS.key(), preCombineFields);
+-      props.setProperty("hoodie.datasource.write.precombine.field", preCombineFields);
++    if (orderingFieldsStr != null) {
++      props.setProperty(HoodiePayloadProps.PAYLOAD_ORDERING_FIELD_PROP_KEY, orderingFieldsStr);
++      props.setProperty(HoodieTableConfig.ORDERING_FIELDS.key(), orderingFieldsStr);
+     }
+     this.tableVersion = tableConfig.getTableVersion();
+     this.payloadProps = props;

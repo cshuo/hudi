@@ -1,0 +1,34 @@
+diff --git a/hudi-spark-datasource/hudi-spark-common/src/main/scala/org/apache/hudi/HoodieWriterUtils.scala b/hudi-spark-datasource/hudi-spark-common/src/main/scala/org/apache/hudi/HoodieWriterUtils.scala
+index b4be1229605e4..83c4dcd8495dc 100644
+--- a/hudi-spark-datasource/hudi-spark-common/src/main/scala/org/apache/hudi/HoodieWriterUtils.scala
++++ b/hudi-spark-datasource/hudi-spark-common/src/main/scala/org/apache/hudi/HoodieWriterUtils.scala
+@@ -55,7 +55,6 @@ object HoodieWriterUtils {
+     val hoodieConfig: HoodieConfig = new HoodieConfig(props)
+     hoodieConfig.setDefaultValue(OPERATION)
+     hoodieConfig.setDefaultValue(TABLE_TYPE)
+-    hoodieConfig.setDefaultValue(PRECOMBINE_FIELD)
+     hoodieConfig.setDefaultValue(KEYGENERATOR_CLASS_NAME)
+     hoodieConfig.setDefaultValue(ENABLE)
+     hoodieConfig.setDefaultValue(COMMIT_METADATA_KEYPREFIX)
+@@ -248,9 +247,9 @@ object HoodieWriterUtils {
+         }
+ 
+         val datasourcePreCombineKey = params.getOrElse(PRECOMBINE_FIELD.key(), null)
+-        val tableConfigPreCombineKey = tableConfig.getString(HoodieTableConfig.PRECOMBINE_FIELDS)
+-        if (null != datasourcePreCombineKey && null != tableConfigPreCombineKey && datasourcePreCombineKey != tableConfigPreCombineKey) {
+-          diffConfigs.append(s"PreCombineKey:\t$datasourcePreCombineKey\t$tableConfigPreCombineKey\n")
++        val tableConfigOrderingKey = tableConfig.getString(HoodieTableConfig.ORDERING_FIELDS)
++        if (null != datasourcePreCombineKey && null != tableConfigOrderingKey && datasourcePreCombineKey != tableConfigOrderingKey) {
++          diffConfigs.append(s"PreCombineKey:\t$datasourcePreCombineKey\t$tableConfigOrderingKey\n")
+         }
+ 
+         val datasourceKeyGen = getOriginKeyGenerator(params)
+@@ -340,7 +339,7 @@ object HoodieWriterUtils {
+   private val sparkDatasourceConfigsToTableConfigsMap = Map(
+     TABLE_NAME -> HoodieTableConfig.NAME,
+     TABLE_TYPE -> HoodieTableConfig.TYPE,
+-    PRECOMBINE_FIELD -> HoodieTableConfig.PRECOMBINE_FIELDS,
++    PRECOMBINE_FIELD -> HoodieTableConfig.ORDERING_FIELDS,
+     PARTITIONPATH_FIELD -> HoodieTableConfig.PARTITION_FIELDS,
+     RECORDKEY_FIELD -> HoodieTableConfig.RECORDKEY_FIELDS,
+     PAYLOAD_CLASS_NAME -> HoodieTableConfig.PAYLOAD_CLASS_NAME,

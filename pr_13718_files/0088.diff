@@ -1,0 +1,13 @@
+diff --git a/hudi-spark-datasource/hudi-spark/src/test/java/org/apache/hudi/functional/TestColStatsRecordWithMetadataRecord.java b/hudi-spark-datasource/hudi-spark/src/test/java/org/apache/hudi/functional/TestColStatsRecordWithMetadataRecord.java
+index 967508927e430..43bae063ba0ac 100644
+--- a/hudi-spark-datasource/hudi-spark/src/test/java/org/apache/hudi/functional/TestColStatsRecordWithMetadataRecord.java
++++ b/hudi-spark-datasource/hudi-spark/src/test/java/org/apache/hudi/functional/TestColStatsRecordWithMetadataRecord.java
+@@ -220,7 +220,7 @@ public int compare(HoodieRecord<HoodieMetadataPayload> o1, HoodieRecord<HoodieMe
+     while (itr.hasNext()) {
+       GenericRecord genericRecord = (GenericRecord) ((HoodieRecord) itr.next()).getData();
+       HoodieRecord<HoodieMetadataPayload> mdtRec = SpillableMapUtils.convertToHoodieRecordPayload(genericRecord,
+-          mdtWriteConfig.getPayloadClass(), mdtWriteConfig.getPreCombineFields().toArray(new String[0]),
++          mdtWriteConfig.getPayloadClass(), new String[0],
+           Pair.of(mdtMetaClient.getTableConfig().getRecordKeyFieldProp(), mdtMetaClient.getTableConfig().getPartitionFieldProp()),
+           false, Option.of(COLUMN_STATS.getPartitionPath()), Option.empty());
+       allRecords.add(mdtRec);
