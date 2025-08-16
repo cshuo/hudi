@@ -1,0 +1,21 @@
+diff --git a/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/functional/TestEmptyCommit.scala b/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/functional/TestEmptyCommit.scala
+index c9e1c970f98c4..e85e12e632646 100644
+--- a/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/functional/TestEmptyCommit.scala
++++ b/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/functional/TestEmptyCommit.scala
+@@ -18,6 +18,7 @@
+ package org.apache.hudi.functional
+ 
+ import org.apache.hudi.{DataSourceWriteOptions, HoodieDataSourceHelpers}
++import org.apache.hudi.common.table.HoodieTableConfig
+ import org.apache.hudi.config.HoodieWriteConfig
+ import org.apache.hudi.testutils.HoodieSparkClientTestBase
+ 
+@@ -34,7 +35,7 @@ class TestEmptyCommit extends HoodieSparkClientTestBase {
+     "hoodie.upsert.shuffle.parallelism" -> "4",
+     DataSourceWriteOptions.RECORDKEY_FIELD.key -> "_row_key",
+     DataSourceWriteOptions.PARTITIONPATH_FIELD.key -> "partition",
+-    DataSourceWriteOptions.PRECOMBINE_FIELD.key -> "timestamp",
++    HoodieTableConfig.ORDERING_FIELDS.key -> "timestamp",
+     HoodieWriteConfig.TBL_NAME.key -> "hoodie_test"
+   )
+ 

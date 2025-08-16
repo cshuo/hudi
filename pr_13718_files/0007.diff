@@ -1,0 +1,13 @@
+diff --git a/hudi-common/src/main/java/org/apache/hudi/common/model/HoodieRecordMerger.java b/hudi-common/src/main/java/org/apache/hudi/common/model/HoodieRecordMerger.java
+index d26147f856ae5..4bdd5613ff851 100644
+--- a/hudi-common/src/main/java/org/apache/hudi/common/model/HoodieRecordMerger.java
++++ b/hudi-common/src/main/java/org/apache/hudi/common/model/HoodieRecordMerger.java
+@@ -172,7 +172,7 @@ default String[] getMandatoryFieldsForMerging(Schema dataSchema, HoodieTableConf
+       }
+     }
+ 
+-    List<String> preCombineFields = cfg.getPreCombineFields();
++    List<String> preCombineFields = cfg.getOrderingFields();
+     requiredFields.addAll(preCombineFields);
+     return requiredFields.toArray(new String[0]);
+   }
