@@ -24,9 +24,10 @@ import org.apache.hudi.HoodieSparkSqlWriter.CANONICALIZE_SCHEMA
 import org.apache.hudi.avro.HoodieAvroUtils
 import org.apache.hudi.common.config.RecordMergeMode
 import org.apache.hudi.common.model.{HoodieAvroRecordMerger, HoodieRecordMerger}
+import org.apache.hudi.common.table.{HoodieTableConfig, HoodieTableVersion}
+import org.apache.hudi.common.util.{ConfigUtils, StringUtils}
 import org.apache.hudi.common.table.{HoodieTableConfig, HoodieTableVersion, PartialUpdateMode}
 import org.apache.hudi.common.util.ConfigUtils.getStringWithAltKeys
-import org.apache.hudi.common.util.StringUtils
 import org.apache.hudi.config.{HoodieIndexConfig, HoodieWriteConfig}
 import org.apache.hudi.config.HoodieWriteConfig.{AVRO_SCHEMA_VALIDATE_ENABLE, SCHEMA_ALLOW_AUTO_EVOLUTION_COLUMN_DROP, TBL_NAME, WRITE_PARTIAL_UPDATE_SCHEMA}
 import org.apache.hudi.exception.{HoodieException, HoodieNotSupportedException}
@@ -268,7 +269,7 @@ case class MergeIntoHoodieTableCommand(mergeInto: MergeIntoTable,
       sparkSession.sessionState.conf.resolver,
       mergeInto.targetTable,
       mergeInto.sourceTable,
-      hoodieCatalogTable.preCombineKeys.asScala.toSeq,
+      hoodieCatalogTable.orderingFields.asScala.toSeq,
       "precombine field",
       updatingActions.flatMap(_.assignments))
 
@@ -525,7 +526,7 @@ case class MergeIntoHoodieTableCommand(mergeInto: MergeIntoTable,
   }
 
   private def getOperationType(parameters: Map[String, String]) = {
-    if (StringUtils.isNullOrEmpty(parameters.getOrElse(PRECOMBINE_FIELD.key, "")) && updatingActions.isEmpty) {
+    if (StringUtils.isNullOrEmpty(ConfigUtils.getOrderingFieldsStrDuringWrite(parameters.asJava)) && updatingActions.isEmpty) {
       INSERT_OPERATION_OPT_VAL
     } else {
       UPSERT_OPERATION_OPT_VAL
@@ -763,7 +764,7 @@ case class MergeIntoHoodieTableCommand(mergeInto: MergeIntoTable,
     // NOTE: Here we fallback to "" to make sure that null value is not overridden with
     // default value ("ts")
     // TODO(HUDI-3456) clean up
-    val preCombineFieldsAsString = String.join(",", hoodieCatalogTable.preCombineKeys)
+    val orderingFieldsAsString = String.join(",", hoodieCatalogTable.orderingFields)
     val hiveSyncConfig = buildHiveSyncConfig(sparkSession, hoodieCatalogTable, tableConfig)
     // for pkless tables, we need to enable optimized merge
     val isPrimaryKeylessTable = !hasPrimaryKey()
@@ -778,7 +779,7 @@ case class MergeIntoHoodieTableCommand(mergeInto: MergeIntoTable,
         tableConfig.getRecordMergeMode,
         tableConfig.getPayloadClass,
         tableConfig.getRecordMergeStrategyId,
-        tableConfig.getPreCombineFieldsStr.orElse(null),
+        tableConfig.getOrderingFieldsStr.orElse(null),
         tableConfig.getTableVersion)
       inferredMergeConfigs.getLeft.name()
     } else {
@@ -787,7 +788,7 @@ case class MergeIntoHoodieTableCommand(mergeInto: MergeIntoTable,
     val overridingOpts = Map(
       "path" -> path,
       RECORDKEY_FIELD.key -> tableConfig.getRawRecordKeyFieldProp,
-      PRECOMBINE_FIELD.key -> preCombineFieldsAsString,
+      HoodieTableConfig.ORDERING_FIELDS.key -> orderingFieldsAsString,
       TBL_NAME.key -> hoodieCatalogTable.tableName,
       PARTITIONPATH_FIELD.key -> getPartitionPathFieldWriteConfig(
         tableConfig.getKeyGeneratorClassName, tableConfig.getPartitionFieldProp, hoodieCatalogTable),
@@ -821,7 +822,7 @@ case class MergeIntoHoodieTableCommand(mergeInto: MergeIntoTable,
       HoodieSparkSqlWriter.SQL_MERGE_INTO_WRITES.key -> "true",
       // Only primary keyless table requires prepped keys and upsert
       HoodieWriteConfig.SPARK_SQL_MERGE_INTO_PREPPED_KEY -> isPrimaryKeylessTable.toString,
-      HoodieWriteConfig.COMBINE_BEFORE_UPSERT.key() -> (!StringUtils.isNullOrEmpty(preCombineFieldsAsString)).toString
+      HoodieWriteConfig.COMBINE_BEFORE_UPSERT.key() -> (!StringUtils.isNullOrEmpty(orderingFieldsAsString)).toString
     )
 
     combineOptions(hoodieCatalogTable, tableConfig, sparkSession.sqlContext.conf,
@@ -853,7 +854,7 @@ case class MergeIntoHoodieTableCommand(mergeInto: MergeIntoTable,
         validateTargetTableAttrExistsInAssignments(
           sparkSession.sessionState.conf.resolver,
           mergeInto.targetTable,
-          hoodieCatalogTable.preCombineKeys.asScala.toSeq,
+          hoodieCatalogTable.orderingFields.asScala.toSeq,
           "precombine field",
           action.assignments)
       )
@@ -923,7 +924,7 @@ case class MergeIntoHoodieTableCommand(mergeInto: MergeIntoTable,
             sparkSession.sessionState.conf.resolver,
             mergeInto.targetTable,
             mergeInto.sourceTable,
-            hoodieCatalogTable.preCombineKeys.asScala.toSeq,
+            hoodieCatalogTable.orderingFields.asScala.toSeq,
             "precombine field",
             assignments)
           associations.foreach(association => validateDataTypes(association._1, association._2, "Precombine field"))
@@ -936,7 +937,7 @@ case class MergeIntoHoodieTableCommand(mergeInto: MergeIntoTable,
   }
 
   private def checkUpdatingActions(updateActions: Seq[UpdateAction], props: Map[String, String]): Unit = {
-    if (hoodieCatalogTable.preCombineKeys.isEmpty && updateActions.nonEmpty) {
+    if (hoodieCatalogTable.orderingFields.isEmpty && updateActions.nonEmpty) {
       logWarning(s"Updates without precombine can have nondeterministic behavior")
     }
     updateActions.foreach(update =>
