@@ -61,7 +61,7 @@ object HoodieOptionConfig {
   val SQL_KEY_PRECOMBINE_FIELD: HoodieSQLOption[String] = buildConf()
     .withSqlKey("preCombineField")
     .withHoodieKey(DataSourceWriteOptions.PRECOMBINE_FIELD.key)
-    .withTableConfigKey(HoodieTableConfig.PRECOMBINE_FIELDS.key)
+    .withTableConfigKey(HoodieTableConfig.ORDERING_FIELDS.key)
     .build()
 
   val SQL_PAYLOAD_CLASS: HoodieSQLOption[String] = buildConf()
@@ -179,11 +179,6 @@ object HoodieOptionConfig {
     val params = mapSqlOptionsToDataSourceWriteConfigs(options)
     params.getOrElse(DataSourceWriteOptions.TABLE_TYPE.key,
       DataSourceWriteOptions.TABLE_TYPE.defaultValue)
-  }
-
-  def getPreCombineField(options: Map[String, String]): Option[String] = {
-    val params = mapSqlOptionsToDataSourceWriteConfigs(options)
-    params.get(DataSourceWriteOptions.PRECOMBINE_FIELD.key).filter(_.nonEmpty)
   }
 
   def deleteHoodieOptions(options: Map[String, String]): Map[String, String] = {
