@@ -1,0 +1,13 @@
+diff --git a/hudi-flink-datasource/hudi-flink/src/main/java/org/apache/hudi/sink/compact/HoodieFlinkCompactor.java b/hudi-flink-datasource/hudi-flink/src/main/java/org/apache/hudi/sink/compact/HoodieFlinkCompactor.java
+index b686017996547..669195e46a339 100644
+--- a/hudi-flink-datasource/hudi-flink/src/main/java/org/apache/hudi/sink/compact/HoodieFlinkCompactor.java
++++ b/hudi-flink-datasource/hudi-flink/src/main/java/org/apache/hudi/sink/compact/HoodieFlinkCompactor.java
+@@ -175,7 +175,7 @@ public AsyncCompactionService(FlinkCompactionConfig cfg, Configuration conf) thr
+       // set table schema
+       CompactionUtil.setAvroSchema(conf, metaClient);
+ 
+-      CompactionUtil.setPreCombineField(conf, metaClient);
++      CompactionUtil.setOrderingFields(conf, metaClient);
+ 
+       // infer changelog mode
+       CompactionUtil.inferChangelogMode(conf, metaClient);

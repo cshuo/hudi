@@ -1,0 +1,22 @@
+diff --git a/hudi-hadoop-common/src/test/java/org/apache/hudi/common/table/TestHoodieTableMetaClient.java b/hudi-hadoop-common/src/test/java/org/apache/hudi/common/table/TestHoodieTableMetaClient.java
+index dc7c022472c95..fd85ea2581788 100644
+--- a/hudi-hadoop-common/src/test/java/org/apache/hudi/common/table/TestHoodieTableMetaClient.java
++++ b/hudi-hadoop-common/src/test/java/org/apache/hudi/common/table/TestHoodieTableMetaClient.java
+@@ -204,7 +204,7 @@ void testCreateMetaClientFromProperties() throws IOException {
+     Properties props = new Properties();
+     props.setProperty(HoodieTableConfig.NAME.key(), "test-table");
+     props.setProperty(HoodieTableConfig.TYPE.key(), HoodieTableType.COPY_ON_WRITE.name());
+-    props.setProperty(HoodieTableConfig.PRECOMBINE_FIELDS.key(), "timestamp");
++    props.setProperty(HoodieTableConfig.ORDERING_FIELDS.key(), "timestamp");
+ 
+     HoodieTableMetaClient metaClient1 = HoodieTableMetaClient.newTableBuilder()
+         .fromProperties(props)
+@@ -218,7 +218,7 @@ void testCreateMetaClientFromProperties() throws IOException {
+     // test table name and type and precombine field also match
+     assertEquals(metaClient1.getTableConfig().getTableName(), metaClient2.getTableConfig().getTableName());
+     assertEquals(metaClient1.getTableConfig().getTableType(), metaClient2.getTableConfig().getTableType());
+-    assertEquals(metaClient1.getTableConfig().getPreCombineFields(), metaClient2.getTableConfig().getPreCombineFields());
++    assertEquals(metaClient1.getTableConfig().getOrderingFields(), metaClient2.getTableConfig().getOrderingFields());
+     // default table version should be current version
+     assertEquals(HoodieTableVersion.current(), metaClient2.getTableConfig().getTableVersion());
+   }

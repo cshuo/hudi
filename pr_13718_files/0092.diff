@@ -1,0 +1,16 @@
+diff --git a/hudi-spark-datasource/hudi-spark/src/test/java/org/apache/hudi/functional/TestHoodieIndex.java b/hudi-spark-datasource/hudi-spark/src/test/java/org/apache/hudi/functional/TestHoodieIndex.java
+index c0fc5846f4b25..4b343e33051cf 100644
+--- a/hudi-spark-datasource/hudi-spark/src/test/java/org/apache/hudi/functional/TestHoodieIndex.java
++++ b/hudi-spark-datasource/hudi-spark/src/test/java/org/apache/hudi/functional/TestHoodieIndex.java
+@@ -182,9 +182,9 @@ private Properties getPropsForKeyGen(IndexType indexType, boolean populateMetaFi
+       properties.put(HoodieTableConfig.RECORDKEY_FIELDS.key(), "_row_key");
+       properties.put("hoodie.datasource.write.keygenerator.class", RawTripTestPayloadKeyGenerator.class.getName());
+       properties.put("hoodie.datasource.write.partitionpath.field", "time");
+-      properties.put("hoodie.datasource.write.precombine.field", "number");
++      properties.put(HoodieTableConfig.ORDERING_FIELDS.key(), "number");
+       properties.put(HoodieTableConfig.PARTITION_FIELDS.key(), "time");
+-      properties.put(HoodieTableConfig.PRECOMBINE_FIELDS.key(), "number");
++      properties.put(HoodieTableConfig.ORDERING_FIELDS.key(), "number");
+     }
+     return properties;
+   }

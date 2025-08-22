@@ -1,0 +1,22 @@
+diff --git a/hudi-hadoop-common/src/test/java/org/apache/hudi/common/table/read/TestEventTimeMerging.java b/hudi-hadoop-common/src/test/java/org/apache/hudi/common/table/read/TestEventTimeMerging.java
+index debbb57954398..0610dd4d8f837 100644
+--- a/hudi-hadoop-common/src/test/java/org/apache/hudi/common/table/read/TestEventTimeMerging.java
++++ b/hudi-hadoop-common/src/test/java/org/apache/hudi/common/table/read/TestEventTimeMerging.java
+@@ -44,7 +44,7 @@
+ import java.util.Properties;
+ import java.util.stream.Stream;
+ 
+-import static org.apache.hudi.common.table.HoodieTableConfig.PRECOMBINE_FIELDS;
++import static org.apache.hudi.common.table.HoodieTableConfig.ORDERING_FIELDS;
+ import static org.apache.hudi.common.testutils.HoodieTestDataGenerator.AVRO_SCHEMA;
+ import static org.apache.hudi.common.testutils.reader.DataGenerationPlan.OperationType.DELETE;
+ import static org.apache.hudi.common.testutils.reader.DataGenerationPlan.OperationType.INSERT;
+@@ -58,7 +58,7 @@ public class TestEventTimeMerging extends HoodieFileGroupReaderTestHarness {
+   protected Properties getMetaProps() {
+     Properties metaProps =  super.getMetaProps();
+     metaProps.setProperty(HoodieTableConfig.RECORD_MERGE_MODE.key(), RecordMergeMode.EVENT_TIME_ORDERING.name());
+-    metaProps.setProperty(PRECOMBINE_FIELDS.key(), "timestamp");
++    metaProps.setProperty(ORDERING_FIELDS.key(), "timestamp");
+     return metaProps;
+   }
+ 

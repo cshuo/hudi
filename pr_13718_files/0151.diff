@@ -1,0 +1,22 @@
+diff --git a/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/spark/sql/hudi/dml/insert/TestInsertTable.scala b/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/spark/sql/hudi/dml/insert/TestInsertTable.scala
+index da6a44ef4865e..9001995712c68 100644
+--- a/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/spark/sql/hudi/dml/insert/TestInsertTable.scala
++++ b/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/spark/sql/hudi/dml/insert/TestInsertTable.scala
+@@ -1168,7 +1168,7 @@ class TestInsertTable extends HoodieSparkSqlTestBase {
+             .option(HoodieWriteConfig.TBL_NAME.key, tableName)
+             .option(TABLE_TYPE.key, COW_TABLE_TYPE_OPT_VAL)
+             .option(RECORDKEY_FIELD.key, "id")
+-            .option(PRECOMBINE_FIELD.key, "ts")
++            .option(HoodieTableConfig.ORDERING_FIELDS.key, "ts")
+             .option(HoodieWriteConfig.BULKINSERT_PARALLELISM_VALUE.key, "1")
+             // test specific settings
+             .option(OPERATION.key, WriteOperationType.BULK_INSERT.value)
+@@ -1492,7 +1492,7 @@ class TestInsertTable extends HoodieSparkSqlTestBase {
+         .option(HoodieWriteConfig.TBL_NAME.key, tableName)
+         .option(TABLE_TYPE.key, MOR_TABLE_TYPE_OPT_VAL)
+         .option(RECORDKEY_FIELD.key, "id")
+-        .option(PRECOMBINE_FIELD.key, "ts")
++        .option(HoodieTableConfig.ORDERING_FIELDS.key, "ts")
+         .option(PARTITIONPATH_FIELD.key, "day,hh")
+         .option(HoodieWriteConfig.INSERT_PARALLELISM_VALUE.key, "1")
+         .option(HoodieWriteConfig.UPSERT_PARALLELISM_VALUE.key, "1")

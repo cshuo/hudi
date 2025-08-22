@@ -1,0 +1,99 @@
+diff --git a/hudi-spark-datasource/hudi-spark/src/test/java/org/apache/hudi/functional/TestHoodieDatasetBulkInsertHelper.java b/hudi-spark-datasource/hudi-spark/src/test/java/org/apache/hudi/functional/TestHoodieDatasetBulkInsertHelper.java
+index 21b1a9be870ea..6f08491f61702 100644
+--- a/hudi-spark-datasource/hudi-spark/src/test/java/org/apache/hudi/functional/TestHoodieDatasetBulkInsertHelper.java
++++ b/hudi-spark-datasource/hudi-spark/src/test/java/org/apache/hudi/functional/TestHoodieDatasetBulkInsertHelper.java
+@@ -23,6 +23,7 @@
+ import org.apache.hudi.SparkAdapterSupport$;
+ import org.apache.hudi.common.config.TypedProperties;
+ import org.apache.hudi.common.model.HoodieRecord;
++import org.apache.hudi.common.table.HoodieTableConfig;
+ import org.apache.hudi.common.util.FileIOUtils;
+ import org.apache.hudi.config.HoodieWriteConfig;
+ import org.apache.hudi.execution.bulkinsert.NonSortPartitionerWithRows;
+@@ -132,7 +133,7 @@ private void testBulkInsertHelperFor(String keyGenClass, String recordKeyField)
+     List<Row> rows = DataSourceTestUtils.generateRandomRows(10);
+     Dataset<Row> dataset = sqlContext.createDataFrame(rows, structType);
+     Dataset<Row> result = HoodieDatasetBulkInsertHelper.prepareForBulkInsert(dataset, config,
+-        new NonSortPartitionerWithRows(), "0000000001");
++        new HoodieTableConfig(), new NonSortPartitionerWithRows(), "0000000001");
+     StructType resultSchema = result.schema();
+ 
+     assertEquals(result.count(), 10);
+@@ -176,7 +177,7 @@ public void testBulkInsertHelperNoMetaFields() {
+         .build();
+     Dataset<Row> dataset = sqlContext.createDataFrame(rows, structType);
+     Dataset<Row> result = HoodieDatasetBulkInsertHelper.prepareForBulkInsert(dataset, config,
+-        new NonSortPartitionerWithRows(), "000001111");
++        new HoodieTableConfig(), new NonSortPartitionerWithRows(), "000001111");
+     StructType resultSchema = result.schema();
+ 
+     assertEquals(result.count(), 10);
+@@ -204,7 +205,10 @@ public void testBulkInsertHelperNoMetaFields() {
+   public void testBulkInsertPreCombine(boolean enablePreCombine) {
+     HoodieWriteConfig config = getConfigBuilder(schemaStr).withProps(getPropsAllSet("_row_key"))
+             .combineInput(enablePreCombine, enablePreCombine)
+-            .withPreCombineField("ts").build();
++            .build();
++    config.setValue(HoodieTableConfig.ORDERING_FIELDS, "ts");
++    HoodieTableConfig tableConfig = new HoodieTableConfig();
++    tableConfig.setValue(HoodieTableConfig.ORDERING_FIELDS, "ts");
+     List<Row> inserts = DataSourceTestUtils.generateRandomRows(10);
+     Dataset<Row> toUpdateDataset = sqlContext.createDataFrame(inserts.subList(0, 5), structType);
+     List<Row> updates = DataSourceTestUtils.updateRowsWithUpdatedTs(toUpdateDataset);
+@@ -213,7 +217,7 @@ public void testBulkInsertPreCombine(boolean enablePreCombine) {
+     rows.addAll(updates);
+     Dataset<Row> dataset = sqlContext.createDataFrame(rows, structType);
+     Dataset<Row> result = HoodieDatasetBulkInsertHelper.prepareForBulkInsert(dataset, config,
+-        new NonSortPartitionerWithRows(), "000001111");
++        tableConfig, new NonSortPartitionerWithRows(), "000001111");
+     StructType resultSchema = result.schema();
+ 
+     assertEquals(result.count(), enablePreCombine ? 10 : 15);
+@@ -317,7 +321,7 @@ public void testNoPropsSet() {
+     Dataset<Row> dataset = sqlContext.createDataFrame(rows, structType);
+     try {
+       Dataset<Row> preparedDF = HoodieDatasetBulkInsertHelper.prepareForBulkInsert(dataset, config,
+-          new NonSortPartitionerWithRows(), "000001111");
++          new HoodieTableConfig(), new NonSortPartitionerWithRows(), "000001111");
+       preparedDF.count();
+       fail("Should have thrown exception");
+     } catch (Exception e) {
+@@ -329,7 +333,7 @@ public void testNoPropsSet() {
+     dataset = sqlContext.createDataFrame(rows, structType);
+     try {
+       Dataset<Row> preparedDF = HoodieDatasetBulkInsertHelper.prepareForBulkInsert(dataset, config,
+-          new NonSortPartitionerWithRows(), "000001111");
++          new HoodieTableConfig(), new NonSortPartitionerWithRows(), "000001111");
+       preparedDF.count();
+       fail("Should have thrown exception");
+     } catch (Exception e) {
+@@ -341,7 +345,7 @@ public void testNoPropsSet() {
+     dataset = sqlContext.createDataFrame(rows, structType);
+     try {
+       Dataset<Row> preparedDF = HoodieDatasetBulkInsertHelper.prepareForBulkInsert(dataset, config,
+-          new NonSortPartitionerWithRows(), "000001111");
++          new HoodieTableConfig(), new NonSortPartitionerWithRows(), "000001111");
+       preparedDF.count();
+       fail("Should have thrown exception");
+     } catch (Exception e) {
+@@ -357,7 +361,10 @@ private ExpressionEncoder getEncoder(StructType schema) {
+   public void testBulkInsertParallelismParam() {
+     HoodieWriteConfig config = getConfigBuilder(schemaStr).withProps(getPropsAllSet("_row_key"))
+         .combineInput(true, true)
+-        .withPreCombineField("ts").build();
++        .build();
++    config.setValue(HoodieTableConfig.ORDERING_FIELDS, "ts");
++    HoodieTableConfig tableConfig = new HoodieTableConfig();
++    tableConfig.setValue(HoodieTableConfig.ORDERING_FIELDS, "ts");
+     int checkParallelism = 7;
+     config.setValue("hoodie.bulkinsert.shuffle.parallelism", String.valueOf(checkParallelism));
+     StageCheckBulkParallelismListener stageCheckBulkParallelismListener =
+@@ -368,7 +375,7 @@ public void testBulkInsertParallelismParam() {
+     assertNotEquals(checkParallelism, HoodieUnsafeUtils.getNumPartitions(dataset));
+     assertNotEquals(checkParallelism, sqlContext.sparkContext().defaultParallelism());
+     Dataset<Row> result = HoodieDatasetBulkInsertHelper.prepareForBulkInsert(dataset, config,
+-        new NonSortPartitionerWithRows(), "000001111");
++        tableConfig, new NonSortPartitionerWithRows(), "000001111");
+     // trigger job
+     result.count();
+     assertEquals(checkParallelism, stageCheckBulkParallelismListener.getParallelism());

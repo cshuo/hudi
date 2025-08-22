@@ -1,0 +1,13 @@
+diff --git a/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/functional/RecordLevelIndexTestBase.scala b/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/functional/RecordLevelIndexTestBase.scala
+index 3fd94ad5cb3a4..95b30bbe6f20a 100644
+--- a/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/functional/RecordLevelIndexTestBase.scala
++++ b/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/functional/RecordLevelIndexTestBase.scala
+@@ -59,7 +59,7 @@ class RecordLevelIndexTestBase extends HoodieStatsIndexTestBase {
+     RECORDKEY_FIELD.key -> "uuid",
+     SECONDARYKEY_COLUMN_NAME.key -> "city",
+     PARTITIONPATH_FIELD.key -> "state",
+-    PRECOMBINE_FIELD.key -> "ts",
++    HoodieTableConfig.ORDERING_FIELDS.key -> "ts",
+     HoodieTableConfig.POPULATE_META_FIELDS.key -> "true"
+   ) ++ metadataOpts
+ 

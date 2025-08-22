@@ -1,0 +1,15 @@
+diff --git a/hudi-common/src/test/java/org/apache/hudi/common/testutils/PreCombineTestUtils.java b/hudi-common/src/test/java/org/apache/hudi/common/testutils/PreCombineTestUtils.java
+index 1591433dd1ddd..2b5b5429e998a 100644
+--- a/hudi-common/src/test/java/org/apache/hudi/common/testutils/PreCombineTestUtils.java
++++ b/hudi-common/src/test/java/org/apache/hudi/common/testutils/PreCombineTestUtils.java
+@@ -30,8 +30,8 @@
+ 
+ public class PreCombineTestUtils {
+   private static String[] preCombineConfigs = new String[] {
+-      HoodieTableConfig.PRECOMBINE_FIELDS.key(),
+-      "hoodie.datasource.write.precombine.field",
++      HoodieTableConfig.ORDERING_FIELDS.key(),
++      "hoodie.datasource.write.precombine.fields",
+       HoodiePayloadProps.PAYLOAD_ORDERING_FIELD_PROP_KEY
+   };
+ 

@@ -1,0 +1,33 @@
+diff --git a/hudi-hadoop-common/src/test/java/org/apache/hudi/common/table/TestHoodieTableConfig.java b/hudi-hadoop-common/src/test/java/org/apache/hudi/common/table/TestHoodieTableConfig.java
+index 8b37c89a3a6c2..cc70833e560b2 100644
+--- a/hudi-hadoop-common/src/test/java/org/apache/hudi/common/table/TestHoodieTableConfig.java
++++ b/hudi-hadoop-common/src/test/java/org/apache/hudi/common/table/TestHoodieTableConfig.java
+@@ -120,7 +120,7 @@ void testCreate() throws IOException {
+   void testUpdate() throws IOException {
+     Properties updatedProps = new Properties();
+     updatedProps.setProperty(HoodieTableConfig.NAME.key(), "test-table2");
+-    updatedProps.setProperty(HoodieTableConfig.PRECOMBINE_FIELDS.key(), "new_field");
++    updatedProps.setProperty(HoodieTableConfig.ORDERING_FIELDS.key(), "new_field");
+     HoodieTableConfig.update(storage, metaPath, updatedProps);
+ 
+     assertTrue(storage.exists(cfgPath));
+@@ -128,8 +128,8 @@ void testUpdate() throws IOException {
+     HoodieTableConfig config = new HoodieTableConfig(storage, metaPath, null, null, null);
+     assertEquals(8, config.getProps().size());
+     assertEquals("test-table2", config.getTableName());
+-    assertEquals(Collections.singletonList("new_field"), config.getPreCombineFields());
+-    assertEquals(Option.of("new_field"), config.getPreCombineFieldsStr());
++    assertEquals(Collections.singletonList("new_field"), config.getOrderingFields());
++    assertEquals(Option.of("new_field"), config.getOrderingFieldsStr());
+   }
+ 
+   @Test
+@@ -219,7 +219,7 @@ void testConcurrentlyUpdate() throws ExecutionException, InterruptedException {
+       for (int i = 0; i < 100; i++) {
+         Properties updatedProps = new Properties();
+         updatedProps.setProperty(HoodieTableConfig.NAME.key(), "test-table" + i);
+-        updatedProps.setProperty(HoodieTableConfig.PRECOMBINE_FIELDS.key(), "new_field" + i);
++        updatedProps.setProperty(HoodieTableConfig.ORDERING_FIELDS.key(), "new_field" + i);
+         HoodieTableConfig.update(storage, metaPath, updatedProps);
+       }
+     });

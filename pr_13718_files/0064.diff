@@ -1,0 +1,13 @@
+diff --git a/hudi-spark-datasource/hudi-spark-common/src/main/scala/org/apache/hudi/HoodieHadoopFsRelationFactory.scala b/hudi-spark-datasource/hudi-spark-common/src/main/scala/org/apache/hudi/HoodieHadoopFsRelationFactory.scala
+index 0a9bef1ab30c1..1bd61407412dc 100644
+--- a/hudi-spark-datasource/hudi-spark-common/src/main/scala/org/apache/hudi/HoodieHadoopFsRelationFactory.scala
++++ b/hudi-spark-datasource/hudi-spark-common/src/main/scala/org/apache/hudi/HoodieHadoopFsRelationFactory.scala
+@@ -186,7 +186,7 @@ abstract class HoodieBaseHadoopFsRelationFactory(val sqlContext: SQLContext,
+   }
+ 
+   protected lazy val preCombineFields: List[String] = {
+-    val tablePrecombineFields = tableConfig.getPreCombineFields
++    val tablePrecombineFields = tableConfig.getOrderingFields
+     if (tablePrecombineFields.isEmpty) {
+       DataSourceOptionsHelper.getPreCombineFields(optParams)
+         .orElse(java.util.Collections.emptyList[String])

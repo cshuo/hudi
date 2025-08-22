@@ -1,0 +1,13 @@
+diff --git a/hudi-client/hudi-client-common/src/main/java/org/apache/hudi/table/upgrade/SevenToEightUpgradeHandler.java b/hudi-client/hudi-client-common/src/main/java/org/apache/hudi/table/upgrade/SevenToEightUpgradeHandler.java
+index aa2e36184259b..278dd1928ae97 100644
+--- a/hudi-client/hudi-client-common/src/main/java/org/apache/hudi/table/upgrade/SevenToEightUpgradeHandler.java
++++ b/hudi-client/hudi-client-common/src/main/java/org/apache/hudi/table/upgrade/SevenToEightUpgradeHandler.java
+@@ -168,7 +168,7 @@ static void upgradePartitionFields(HoodieWriteConfig config, HoodieTableConfig t
+ 
+   static void upgradeMergeMode(HoodieTableConfig tableConfig, Map<ConfigProperty, String> tablePropsToAdd) {
+     String payloadClass = tableConfig.getPayloadClass();
+-    String preCombineFields = tableConfig.getPreCombineFieldsStr().orElse(null);
++    String preCombineFields = tableConfig.getOrderingFieldsStr().orElse(null);
+     if (isCustomPayloadClass(payloadClass)) {
+       // This contains a special case: HoodieMetadataPayload.
+       tablePropsToAdd.put(

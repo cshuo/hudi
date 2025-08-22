@@ -1,0 +1,13 @@
+diff --git a/hudi-common/src/main/java/org/apache/hudi/common/table/log/BaseHoodieLogRecordReader.java b/hudi-common/src/main/java/org/apache/hudi/common/table/log/BaseHoodieLogRecordReader.java
+index 831a86ad3e9aa..a7d413c5477c5 100644
+--- a/hudi-common/src/main/java/org/apache/hudi/common/table/log/BaseHoodieLogRecordReader.java
++++ b/hudi-common/src/main/java/org/apache/hudi/common/table/log/BaseHoodieLogRecordReader.java
+@@ -151,7 +151,7 @@ protected BaseHoodieLogRecordReader(HoodieReaderContext<T> readerContext, Hoodie
+     // load class from the payload fully qualified class name
+     HoodieTableConfig tableConfig = this.hoodieTableMetaClient.getTableConfig();
+     this.payloadClassFQN = tableConfig.getPayloadClass();
+-    this.preCombineFields = tableConfig.getPreCombineFieldsStr().orElse(null);
++    this.preCombineFields = tableConfig.getOrderingFieldsStr().orElse(null);
+     // Log scanner merge log with precombine
+     TypedProperties props = new TypedProperties();
+     if (this.preCombineFields != null) {

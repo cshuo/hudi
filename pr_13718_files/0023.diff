@@ -1,0 +1,17 @@
+diff --git a/hudi-common/src/test/java/org/apache/hudi/common/testutils/HoodieAdaptablePayloadDataGenerator.java b/hudi-common/src/test/java/org/apache/hudi/common/testutils/HoodieAdaptablePayloadDataGenerator.java
+index 4d397e8bfac96..5a0106c1b340c 100644
+--- a/hudi-common/src/test/java/org/apache/hudi/common/testutils/HoodieAdaptablePayloadDataGenerator.java
++++ b/hudi-common/src/test/java/org/apache/hudi/common/testutils/HoodieAdaptablePayloadDataGenerator.java
+@@ -65,10 +65,10 @@ public static Properties getKeyGenProps(Class<?> payloadClass) {
+     Properties props = new Properties();
+     props.put("hoodie.datasource.write.recordkey.field", "id");
+     props.put("hoodie.datasource.write.partitionpath.field", "pt");
+-    props.put("hoodie.datasource.write.precombine.field", orderingField);
++    props.put(HoodieTableConfig.ORDERING_FIELDS.key(), orderingField);
+     props.put(HoodieTableConfig.RECORDKEY_FIELDS.key(), "id");
+     props.put(HoodieTableConfig.PARTITION_FIELDS.key(), "pt");
+-    props.put(HoodieTableConfig.PRECOMBINE_FIELDS.key(), orderingField);
++    props.put(HoodieTableConfig.ORDERING_FIELDS.key(), orderingField);
+     return props;
+   }
+ 

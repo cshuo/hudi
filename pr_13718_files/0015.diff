@@ -1,0 +1,13 @@
+diff --git a/hudi-common/src/main/java/org/apache/hudi/metadata/HoodieTableMetadataUtil.java b/hudi-common/src/main/java/org/apache/hudi/metadata/HoodieTableMetadataUtil.java
+index 4bfeee6d8704f..2a6bf0cd91eee 100644
+--- a/hudi-common/src/main/java/org/apache/hudi/metadata/HoodieTableMetadataUtil.java
++++ b/hudi-common/src/main/java/org/apache/hudi/metadata/HoodieTableMetadataUtil.java
+@@ -1047,7 +1047,7 @@ private static <T> ClosableIterator<BufferedRecord<T>> getLogRecords(List<String
+       readerContext.setSchemaHandler(new FileGroupReaderSchemaHandler<>(readerContext, writerSchemaOpt.get(), writerSchemaOpt.get(), Option.empty(), tableConfig, properties));
+       HoodieReadStats readStats = new HoodieReadStats();
+       KeyBasedFileGroupRecordBuffer<T> recordBuffer = new KeyBasedFileGroupRecordBuffer<>(readerContext, datasetMetaClient,
+-          readerContext.getMergeMode(), PartialUpdateMode.NONE, properties, tableConfig.getPreCombineFields(),
++          readerContext.getMergeMode(), PartialUpdateMode.NONE, properties, tableConfig.getOrderingFields(),
+           UpdateProcessor.create(readStats, readerContext, true, Option.empty()));
+ 
+       // CRITICAL: Ensure allowInflightInstants is set to true

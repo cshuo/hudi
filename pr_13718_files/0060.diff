@@ -1,0 +1,15 @@
+diff --git a/hudi-spark-datasource/hudi-spark-common/src/main/scala/org/apache/hudi/DefaultSource.scala b/hudi-spark-datasource/hudi-spark-common/src/main/scala/org/apache/hudi/DefaultSource.scala
+index 9269315de982d..54ca53794e346 100644
+--- a/hudi-spark-datasource/hudi-spark-common/src/main/scala/org/apache/hudi/DefaultSource.scala
++++ b/hudi-spark-datasource/hudi-spark-common/src/main/scala/org/apache/hudi/DefaultSource.scala
+@@ -135,8 +135,8 @@ class DefaultSource extends RelationProvider
+       .setBasePath(tablePath).build()
+ 
+     // Add preCombineField to options for buildReaderWithPartitionValues properly
+-    val options = if (metaClient.getTableConfig.getPreCombineFieldsStr.isPresent) {
+-      parameters ++ Map(HoodieTableConfig.PRECOMBINE_FIELDS.key -> metaClient.getTableConfig.getPreCombineFieldsStr.orElse(null))
++    val options = if (metaClient.getTableConfig.getOrderingFieldsStr.isPresent) {
++      parameters ++ Map(HoodieTableConfig.ORDERING_FIELDS.key -> metaClient.getTableConfig.getOrderingFieldsStr.orElse(null))
+     } else {
+       parameters
+     }
