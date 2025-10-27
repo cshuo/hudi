@@ -1,0 +1,13 @@
+diff --git a/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/functional/TestMetadataRecordIndex.scala b/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/functional/TestMetadataRecordIndex.scala
+index e1ece6d88ecb2..3e386e7f029a9 100644
+--- a/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/functional/TestMetadataRecordIndex.scala
++++ b/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/functional/TestMetadataRecordIndex.scala
+@@ -56,7 +56,7 @@ class TestMetadataRecordIndex extends HoodieSparkClientTestBase {
+     HoodieWriteConfig.TBL_NAME.key -> "hoodie_test",
+     RECORDKEY_FIELD.key -> "_row_key",
+     PARTITIONPATH_FIELD.key -> "partition",
+-    PRECOMBINE_FIELD.key -> "timestamp",
++    HoodieTableConfig.ORDERING_FIELDS.key -> "timestamp",
+     HoodieTableConfig.POPULATE_META_FIELDS.key -> "true"
+   ) ++ metadataOpts
+   var mergedDfList: List[DataFrame] = List.empty

@@ -1,0 +1,17 @@
+diff --git a/hudi-flink-datasource/hudi-flink/src/main/java/org/apache/hudi/table/HoodieTableFactory.java b/hudi-flink-datasource/hudi-flink/src/main/java/org/apache/hudi/table/HoodieTableFactory.java
+index cd10f8edb29a8..726b6fef5ef8a 100644
+--- a/hudi-flink-datasource/hudi-flink/src/main/java/org/apache/hudi/table/HoodieTableFactory.java
++++ b/hudi-flink-datasource/hudi-flink/src/main/java/org/apache/hudi/table/HoodieTableFactory.java
+@@ -117,9 +117,9 @@ private void setupTableOptions(String basePath, Configuration conf) {
+               && !conf.contains(FlinkOptions.RECORD_KEY_FIELD)) {
+             conf.set(FlinkOptions.RECORD_KEY_FIELD, tableConfig.getString(HoodieTableConfig.RECORDKEY_FIELDS));
+           }
+-          if (tableConfig.contains(HoodieTableConfig.PRECOMBINE_FIELDS)
+-              && !conf.contains(FlinkOptions.PRECOMBINE_FIELD)) {
+-            conf.set(FlinkOptions.PRECOMBINE_FIELD, tableConfig.getString(HoodieTableConfig.PRECOMBINE_FIELDS));
++          if (tableConfig.contains(HoodieTableConfig.ORDERING_FIELDS)
++              && !conf.contains(FlinkOptions.ORDERING_FIELDS)) {
++            conf.set(FlinkOptions.ORDERING_FIELDS, tableConfig.getString(HoodieTableConfig.ORDERING_FIELDS));
+           }
+           if (tableConfig.contains(HoodieTableConfig.HIVE_STYLE_PARTITIONING_ENABLE)
+               && !conf.contains(FlinkOptions.HIVE_STYLE_PARTITIONING)) {

@@ -1,0 +1,13 @@
+diff --git a/hudi-spark-datasource/hudi-spark-common/src/main/scala/org/apache/hudi/cdc/CDCFileGroupIterator.scala b/hudi-spark-datasource/hudi-spark-common/src/main/scala/org/apache/hudi/cdc/CDCFileGroupIterator.scala
+index 99e3fb23b5942..3b548630c72a0 100644
+--- a/hudi-spark-datasource/hudi-spark-common/src/main/scala/org/apache/hudi/cdc/CDCFileGroupIterator.scala
++++ b/hudi-spark-datasource/hudi-spark-common/src/main/scala/org/apache/hudi/cdc/CDCFileGroupIterator.scala
+@@ -505,7 +505,7 @@ class CDCFileGroupIterator(split: HoodieCDCFileGroupSplit,
+         Option.empty(), metaClient.getTableConfig, readerProperties))
+     val stats = new HoodieReadStats
+     val recordBuffer = new KeyBasedFileGroupRecordBuffer[InternalRow](readerContext, metaClient, readerContext.getMergeMode,
+-      metaClient.getTableConfig.getPartialUpdateMode, readerProperties, metaClient.getTableConfig.getPreCombineFields,
++      metaClient.getTableConfig.getPartialUpdateMode, readerProperties, metaClient.getTableConfig.getOrderingFields,
+       UpdateProcessor.create(stats, readerContext, true, Option.empty()))
+ 
+     HoodieMergedLogRecordReader.newBuilder[InternalRow]

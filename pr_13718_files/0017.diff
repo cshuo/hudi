@@ -1,0 +1,15 @@
+diff --git a/hudi-common/src/test/java/org/apache/hudi/common/table/read/TestFileGroupReaderSchemaHandler.java b/hudi-common/src/test/java/org/apache/hudi/common/table/read/TestFileGroupReaderSchemaHandler.java
+index 39ff90cc05c5c..8df6c665a8f67 100644
+--- a/hudi-common/src/test/java/org/apache/hudi/common/table/read/TestFileGroupReaderSchemaHandler.java
++++ b/hudi-common/src/test/java/org/apache/hudi/common/table/read/TestFileGroupReaderSchemaHandler.java
+@@ -192,8 +192,8 @@ public void testSchemaForMandatoryFields(boolean setPrecombine,
+     HoodieTableConfig tableConfig = mock(HoodieTableConfig.class);
+     when(tableConfig.getRecordMergeMode()).thenReturn(mergeMode);
+     when(tableConfig.populateMetaFields()).thenReturn(true);
+-    when(tableConfig.getPreCombineFieldsStr()).thenReturn(Option.of(setPrecombine ? preCombineField : StringUtils.EMPTY_STRING));
+-    when(tableConfig.getPreCombineFields()).thenReturn(setPrecombine ? Collections.singletonList(preCombineField) : Collections.emptyList());
++    when(tableConfig.getOrderingFieldsStr()).thenReturn(Option.of(setPrecombine ? preCombineField : StringUtils.EMPTY_STRING));
++    when(tableConfig.getOrderingFields()).thenReturn(setPrecombine ? Collections.singletonList(preCombineField) : Collections.emptyList());
+     when(tableConfig.getTableVersion()).thenReturn(tableVersion);
+     if (tableConfig.getTableVersion() == HoodieTableVersion.SIX) {
+       if (mergeMode == RecordMergeMode.EVENT_TIME_ORDERING) {

@@ -1,0 +1,40 @@
+diff --git a/hudi-examples/hudi-examples-spark/src/test/python/HoodiePySparkQuickstart.py b/hudi-examples/hudi-examples-spark/src/test/python/HoodiePySparkQuickstart.py
+index 9505e3217850c..d3b7be749e6be 100644
+--- a/hudi-examples/hudi-examples-spark/src/test/python/HoodiePySparkQuickstart.py
++++ b/hudi-examples/hudi-examples-spark/src/test/python/HoodiePySparkQuickstart.py
+@@ -35,7 +35,7 @@ def __init__(self, spark: sql.SparkSession, tableName: str, basePath: str):
+             'hoodie.datasource.write.recordkey.field': 'uuid',
+             'hoodie.datasource.write.partitionpath.field': 'partitionpath',
+             'hoodie.datasource.write.operation': 'upsert',
+-            'hoodie.datasource.write.precombine.field': 'ts',
++            'hoodie.datasource.write.precombine.fields': 'ts',
+             'hoodie.upsert.shuffle.parallelism': 2,
+             'hoodie.insert.shuffle.parallelism': 2
+         }
+@@ -162,7 +162,7 @@ def softDeletes(self):
+         'hoodie.datasource.write.recordkey.field': 'uuid',
+         'hoodie.datasource.write.partitionpath.field': 'partitionpath',
+         'hoodie.datasource.write.operation': 'upsert',
+-        'hoodie.datasource.write.precombine.field': 'ts',
++        'hoodie.datasource.write.precombine.fields': 'ts',
+         'hoodie.upsert.shuffle.parallelism': 2, 
+         'hoodie.insert.shuffle.parallelism': 2
+         }
+@@ -196,7 +196,7 @@ def hardDeletes(self):
+             'hoodie.datasource.write.recordkey.field': 'uuid',
+             'hoodie.datasource.write.partitionpath.field': 'partitionpath',
+             'hoodie.datasource.write.operation': 'delete',
+-            'hoodie.datasource.write.precombine.field': 'ts',
++            'hoodie.datasource.write.precombine.fields': 'ts',
+             'hoodie.upsert.shuffle.parallelism': 2, 
+             'hoodie.insert.shuffle.parallelism': 2
+         }
+@@ -223,7 +223,7 @@ def insertOverwrite(self):
+             'hoodie.datasource.write.recordkey.field': 'uuid',
+             'hoodie.datasource.write.partitionpath.field': 'partitionpath',
+             'hoodie.datasource.write.operation': 'insert_overwrite',
+-            'hoodie.datasource.write.precombine.field': 'ts',
++            'hoodie.datasource.write.precombine.fields': 'ts',
+             'hoodie.upsert.shuffle.parallelism': 2,
+             'hoodie.insert.shuffle.parallelism': 2
+         }

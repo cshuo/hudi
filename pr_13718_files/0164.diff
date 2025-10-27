@@ -1,0 +1,13 @@
+diff --git a/hudi-utilities/src/main/java/org/apache/hudi/utilities/streamer/StreamSync.java b/hudi-utilities/src/main/java/org/apache/hudi/utilities/streamer/StreamSync.java
+index a8d5c2a0907a0..894b7c70b0be1 100644
+--- a/hudi-utilities/src/main/java/org/apache/hudi/utilities/streamer/StreamSync.java
++++ b/hudi-utilities/src/main/java/org/apache/hudi/utilities/streamer/StreamSync.java
+@@ -444,7 +444,7 @@ HoodieTableMetaClient initializeEmptyTable(HoodieTableMetaClient.TableBuilder ta
+         .setPopulateMetaFields(props.getBoolean(HoodieTableConfig.POPULATE_META_FIELDS.key(),
+             HoodieTableConfig.POPULATE_META_FIELDS.defaultValue()))
+         .setKeyGeneratorClassProp(keyGenClassName)
+-        .setPreCombineFields(cfg.sourceOrderingFields)
++        .setOrderingFields(cfg.sourceOrderingFields)
+         .setPartitionMetafileUseBaseFormat(props.getBoolean(HoodieTableConfig.PARTITION_METAFILE_USE_BASE_FORMAT.key(),
+             HoodieTableConfig.PARTITION_METAFILE_USE_BASE_FORMAT.defaultValue()))
+         .setCDCEnabled(props.getBoolean(HoodieTableConfig.CDC_ENABLED.key(),

@@ -1,0 +1,13 @@
+diff --git a/hudi-common/src/test/java/org/apache/hudi/common/table/read/buffer/TestKeyBasedFileGroupRecordBuffer.java b/hudi-common/src/test/java/org/apache/hudi/common/table/read/buffer/TestKeyBasedFileGroupRecordBuffer.java
+index 50eaeb454df2a..d1d0b6e92290d 100644
+--- a/hudi-common/src/test/java/org/apache/hudi/common/table/read/buffer/TestKeyBasedFileGroupRecordBuffer.java
++++ b/hudi-common/src/test/java/org/apache/hudi/common/table/read/buffer/TestKeyBasedFileGroupRecordBuffer.java
+@@ -140,7 +140,7 @@ void readWithEventTimeOrderingAndDeleteBlock() throws IOException {
+   void readWithEventTimeOrderingWithRecords() throws IOException {
+     HoodieReadStats readStats = new HoodieReadStats();
+     TypedProperties properties = new TypedProperties();
+-    properties.setProperty(HoodieTableConfig.PRECOMBINE_FIELDS.key(), "ts");
++    properties.setProperty(HoodieTableConfig.ORDERING_FIELDS.key(), "ts");
+     properties.setProperty(DELETE_KEY, "counter");
+     properties.setProperty(DELETE_MARKER, "3");
+     HoodieTableConfig tableConfig = mock(HoodieTableConfig.class);

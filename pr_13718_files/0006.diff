@@ -1,0 +1,20 @@
+diff --git a/hudi-common/src/main/java/org/apache/hudi/common/engine/HoodieReaderContext.java b/hudi-common/src/main/java/org/apache/hudi/common/engine/HoodieReaderContext.java
+index 120b7cef9fdf1..28e34c04ca693 100644
+--- a/hudi-common/src/main/java/org/apache/hudi/common/engine/HoodieReaderContext.java
++++ b/hudi-common/src/main/java/org/apache/hudi/common/engine/HoodieReaderContext.java
+@@ -274,13 +274,13 @@ private void initRecordMerger(TypedProperties properties, boolean isIngestion) {
+     // If the provided payload class differs from the table's payload class, we need to infer the correct merging behavior.
+     if (isIngestion && providedPayloadClass.map(className -> !className.equals(tableConfig.getPayloadClass())).orElse(false)) {
+       Triple<RecordMergeMode, String, String> triple = HoodieTableConfig.inferCorrectMergingBehavior(null, providedPayloadClass.get(), null,
+-          tableConfig.getPreCombineFieldsStr().orElse(null), tableVersion);
++          tableConfig.getOrderingFieldsStr().orElse(null), tableVersion);
+       recordMergeMode = triple.getLeft();
+       mergeStrategyId = triple.getRight();
+     } else if (!tableVersion.greaterThanOrEquals(HoodieTableVersion.EIGHT)) {
+       Triple<RecordMergeMode, String, String> triple = HoodieTableConfig.inferCorrectMergingBehavior(
+           recordMergeMode, tableConfig.getPayloadClass(),
+-          mergeStrategyId, tableConfig.getPreCombineFieldsStr().orElse(null), tableVersion);
++          mergeStrategyId, tableConfig.getOrderingFieldsStr().orElse(null), tableVersion);
+       recordMergeMode = triple.getLeft();
+       mergeStrategyId = triple.getRight();
+     }

@@ -1,0 +1,13 @@
+diff --git a/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/functional/TestParquetColumnProjection.scala b/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/functional/TestParquetColumnProjection.scala
+index 3be899b43e4ac..8784e254ea5d0 100644
+--- a/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/functional/TestParquetColumnProjection.scala
++++ b/hudi-spark-datasource/hudi-spark/src/test/scala/org/apache/hudi/functional/TestParquetColumnProjection.scala
+@@ -50,7 +50,7 @@ class TestParquetColumnProjection extends SparkClientFunctionalTestHarness with
+     "hoodie.bulkinsert.shuffle.parallelism" -> "2",
+     "hoodie.delete.shuffle.parallelism" -> "1",
+     DataSourceWriteOptions.RECORDKEY_FIELD.key -> "_row_key",
+-    DataSourceWriteOptions.PRECOMBINE_FIELD.key -> "timestamp",
++    HoodieTableConfig.ORDERING_FIELDS.key -> "timestamp",
+     HoodieWriteConfig.TBL_NAME.key -> "hoodie_test",
+     HoodieMetadataConfig.ENABLE.key -> "true"
+     // NOTE: It's critical that we use non-partitioned table, since the way we track amount of bytes read

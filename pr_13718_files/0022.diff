@@ -1,0 +1,13 @@
+diff --git a/hudi-common/src/test/java/org/apache/hudi/common/table/read/buffer/TestStreamingKeyBasedFileGroupRecordBuffer.java b/hudi-common/src/test/java/org/apache/hudi/common/table/read/buffer/TestStreamingKeyBasedFileGroupRecordBuffer.java
+index baf1140cfee2e..7bb7d751255a8 100644
+--- a/hudi-common/src/test/java/org/apache/hudi/common/table/read/buffer/TestStreamingKeyBasedFileGroupRecordBuffer.java
++++ b/hudi-common/src/test/java/org/apache/hudi/common/table/read/buffer/TestStreamingKeyBasedFileGroupRecordBuffer.java
+@@ -70,7 +70,7 @@ class TestStreamingKeyBasedFileGroupRecordBuffer extends BaseTestFileGroupRecord
+   void readWithEventTimeOrdering() throws IOException {
+     HoodieReadStats readStats = new HoodieReadStats();
+     TypedProperties properties = new TypedProperties();
+-    properties.setProperty(HoodieTableConfig.PRECOMBINE_FIELDS.key(), "ts");
++    properties.setProperty(HoodieTableConfig.ORDERING_FIELDS.key(), "ts");
+     properties.setProperty(DELETE_KEY, "counter");
+     properties.setProperty(DELETE_MARKER, "3");
+     HoodieTableConfig tableConfig = mock(HoodieTableConfig.class);
