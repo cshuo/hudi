@@ -18,10 +18,12 @@
 
 package org.apache.hudi.sink.append;
 
+import org.apache.hudi.common.util.StringUtils;
 import org.apache.hudi.configuration.FlinkOptions;
 import org.apache.hudi.exception.HoodieException;
 import org.apache.hudi.exception.HoodieIOException;
 import org.apache.hudi.sink.StreamWriteOperatorCoordinator;
+import org.apache.hudi.sink.buffer.BufferType;
 import org.apache.hudi.sink.buffer.MemorySegmentPoolFactory;
 import org.apache.hudi.sink.bulk.sort.SortOperatorGen;
 import org.apache.hudi.sink.utils.BufferUtils;
@@ -39,8 +41,6 @@ import org.apache.flink.table.runtime.operators.sort.BinaryInMemorySortBuffer;
 import org.apache.flink.table.runtime.util.MemorySegmentPool;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.util.Collector;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -54,18 +54,21 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 /**
- * Sink function to write the data to the underneath filesystem with buffer sort
+ * Sink function to write the data to the underneath filesystem with bounded in-memory buffer sort
  * to improve the parquet compression rate.
  *
+ * <p>Uses a pair of buffers where one accumulates records while the other is being sorted and
+ * written asynchronously.
+ *
  * <p>The function writes base files directly for each checkpoint,
- * the file may roll over when it’s size hits the configured threshold.
+ * the file may roll over when its size hits the configured threshold.
  *
  * @param <T> Type of the input record
  * @see StreamWriteOperatorCoordinator
+ * @see BufferType#BOUNDED_IN_MEMORY
  */
 @Slf4j
-public class AppendWriteFunctionWithBufferSort<T> extends AppendWriteFunction<T> {
-  private static final Logger LOG = LoggerFactory.getLogger(AppendWriteFunctionWithBufferSort.class);
+public class AppendWriteFunctionWithBIMBufferSort<T> extends AppendWriteFunction<T> {
 
   private final long writeBufferSize;
   private transient BinaryInMemorySortBuffer activeBuffer;
@@ -74,7 +77,7 @@ public class AppendWriteFunctionWithBufferSort<T> extends AppendWriteFunction<T>
   private transient AtomicReference<CompletableFuture<Void>> asyncWriteTask;
   private transient AtomicBoolean isBackgroundBufferBeingProcessed;
 
-  public AppendWriteFunctionWithBufferSort(Configuration config, RowType rowType) {
+  public AppendWriteFunctionWithBIMBufferSort(Configuration config, RowType rowType) {
     super(config, rowType);
     this.writeBufferSize = config.get(FlinkOptions.WRITE_BUFFER_SIZE);
   }
@@ -82,11 +85,17 @@ public class AppendWriteFunctionWithBufferSort<T> extends AppendWriteFunction<T>
   @Override
   public void open(Configuration parameters) throws Exception {
     super.open(parameters);
-    String sortKeys = config.get(FlinkOptions.WRITE_BUFFER_SORT_KEYS);
-    if (sortKeys == null) {
-      throw new IllegalArgumentException("Sort keys can't be null for append write with buffer sort.");
+
+    // Resolve sort keys (defaults to record key if not specified)
+    String sortKeys = AppendWriteFunctions.resolveSortKeys(config);
+    if (StringUtils.isNullOrEmpty(sortKeys)) {
+      throw new IllegalArgumentException("Sort keys can't be null or empty for append write with buffer sort. "
+          + "Either set write.buffer.sort.keys or ensure record key field is configured.");
     }
-    List<String> sortKeyList = Arrays.stream(sortKeys.split(",")).map(key -> key.trim()).collect(Collectors.toList());
+
+    List<String> sortKeyList = Arrays.stream(sortKeys.split(","))
+        .map(String::trim)
+        .collect(Collectors.toList());
     SortOperatorGen sortOperatorGen = new SortOperatorGen(rowType, sortKeyList.toArray(new String[0]));
     SortCodeGenerator codeGenerator = sortOperatorGen.createSortCodeGenerator();
     GeneratedNormalizedKeyComputer keyComputer = codeGenerator.generateNormalizedKeyComputer("SortComputer");
@@ -94,13 +103,13 @@ public class AppendWriteFunctionWithBufferSort<T> extends AppendWriteFunction<T>
     MemorySegmentPool memorySegmentPool = MemorySegmentPoolFactory.createMemorySegmentPool(config);
 
     this.activeBuffer = BufferUtils.createBuffer(rowType,
-            memorySegmentPool,
-            keyComputer.newInstance(Thread.currentThread().getContextClassLoader()),
-            recordComparator.newInstance(Thread.currentThread().getContextClassLoader()));
+        memorySegmentPool,
+        keyComputer.newInstance(Thread.currentThread().getContextClassLoader()),
+        recordComparator.newInstance(Thread.currentThread().getContextClassLoader()));
     this.backgroundBuffer = BufferUtils.createBuffer(rowType,
-            memorySegmentPool,
-            keyComputer.newInstance(Thread.currentThread().getContextClassLoader()),
-            recordComparator.newInstance(Thread.currentThread().getContextClassLoader()));
+        memorySegmentPool,
+        keyComputer.newInstance(Thread.currentThread().getContextClassLoader()),
+        recordComparator.newInstance(Thread.currentThread().getContextClassLoader()));
 
     this.asyncWriteExecutor = Executors.newSingleThreadExecutor(r -> {
       Thread t = new Thread(r, "async-write-thread");
@@ -110,7 +119,8 @@ public class AppendWriteFunctionWithBufferSort<T> extends AppendWriteFunction<T>
     this.asyncWriteTask = new AtomicReference<>(null);
     this.isBackgroundBufferBeingProcessed = new AtomicBoolean(false);
 
-    LOG.info("{} is initialized successfully with double buffer.", getClass().getSimpleName());
+    log.info("{} initialized with bounded in-memory buffer, sort keys: {}",
+        getClass().getSimpleName(), sortKeys);
   }
 
   @Override
@@ -173,7 +183,7 @@ public class AppendWriteFunctionWithBufferSort<T> extends AppendWriteFunction<T>
         try {
           sortAndSend(backgroundBuffer);
         } catch (IOException e) {
-          LOG.error("Error during async write", e);
+          log.error("Error during async write", e);
           throw new RuntimeException(e);
         } finally {
           isBackgroundBufferBeingProcessed.set(false);
@@ -196,7 +206,7 @@ public class AppendWriteFunctionWithBufferSort<T> extends AppendWriteFunction<T>
         }
       }
     } catch (Exception e) {
-      LOG.error("Error waiting for async write completion", e);
+      log.error("Error waiting for async write completion", e);
       throw new RuntimeException(e);
     }
   }
@@ -214,18 +224,14 @@ public class AppendWriteFunctionWithBufferSort<T> extends AppendWriteFunction<T>
     if (this.writerHelper == null) {
       initWriterHelper();
     }
-    sort(buffer);
-    Iterator<BinaryRowData> iterator =
-            new MutableIteratorWrapperIterator<>(
-                    buffer.getIterator(), () -> new BinaryRowData(rowType.getFieldCount()));
+    new QuickSort().sort(buffer);
+    Iterator<BinaryRowData> iterator = new MutableIteratorWrapperIterator<>(
+        buffer.getIterator(),
+        () -> new BinaryRowData(rowType.getFieldCount()));
     while (iterator.hasNext()) {
       writerHelper.write(iterator.next());
     }
     buffer.reset();
-  }
-
-  private static void sort(BinaryInMemorySortBuffer dataBuffer) {
-    new QuickSort().sort(dataBuffer);
   }
 
   @Override
