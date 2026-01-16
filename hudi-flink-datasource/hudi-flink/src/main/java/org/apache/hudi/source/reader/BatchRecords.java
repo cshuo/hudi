@@ -38,9 +38,6 @@ public class BatchRecords<T> implements RecordsWithSplitIds<HoodieRecordWithPosi
   private final Set<String> finishedSplits;
   private final HoodieRecordWithPosition<T> recordAndPosition;
 
-  // point to current read position within the records list
-  private int position;
-
   BatchRecords(
       String splitId,
       ClosableIterator<T> recordIterator,
@@ -58,7 +55,6 @@ public class BatchRecords<T> implements RecordsWithSplitIds<HoodieRecordWithPosi
     this.finishedSplits = finishedSplits;
     this.recordAndPosition = new HoodieRecordWithPosition<>();
     this.recordAndPosition.set(null, fileOffset, startingRecordOffset);
-    this.position = 0;
   }
 
   @Nullable
@@ -79,11 +75,8 @@ public class BatchRecords<T> implements RecordsWithSplitIds<HoodieRecordWithPosi
   public HoodieRecordWithPosition<T> nextRecordFromSplit() {
     if (recordIterator.hasNext()) {
       recordAndPosition.record(recordIterator.next());
-      position = position + 1;
       return recordAndPosition;
     } else {
-      finishedSplits.add(splitId);
-      recordIterator.close();
       return null;
     }
   }
@@ -97,21 +90,6 @@ public class BatchRecords<T> implements RecordsWithSplitIds<HoodieRecordWithPosi
   public void recycle() {
     if (recordIterator != null) {
       recordIterator.close();
-    }
-  }
-
-  public void seek(long startingRecordOffset) {
-    for (long i = 0; i < startingRecordOffset; ++i) {
-      if (recordIterator.hasNext()) {
-        position = position + 1;
-        recordIterator.next();
-      } else {
-        throw new IllegalStateException(
-            String.format(
-                "Invalid starting record offset %d for split %s",
-                startingRecordOffset,
-                splitId));
-      }
     }
   }
 
