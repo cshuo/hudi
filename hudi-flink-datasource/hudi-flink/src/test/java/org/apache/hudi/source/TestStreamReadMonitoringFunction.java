@@ -467,6 +467,7 @@ public class TestStreamReadMonitoringFunction {
   public void testCheckpointRestoreWithLimit() throws Exception {
     TestData.writeData(TestData.DATA_SET_INSERT, conf);
     conf.set(FlinkOptions.READ_SPLITS_LIMIT, 2);
+    conf.set(FlinkOptions.READ_STREAMING_CHECK_INTERVAL, 1);
     StreamReadMonitoringFunction function = TestUtils.getMonitorFunc(conf);
     OperatorSubtaskState state;
     try (AbstractStreamOperatorTestHarness<MergeOnReadInputSplit> harness = createHarness(function)) {
