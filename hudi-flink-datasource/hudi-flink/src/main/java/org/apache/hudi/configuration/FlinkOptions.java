@@ -228,6 +228,19 @@ public class FlinkOptions extends HoodieConfig {
       .withFallbackKeys(HoodieMetadataConfig.ENABLE.key())
       .withDescription("Enable the internal metadata table which serves table metadata like level file listings, default enabled");
 
+  @AdvancedConfig
+  public static final ConfigOption<Boolean> METADATA_COMPACTION_SCHEDULE_ENABLED = ConfigOptions
+      .key("metadata.compaction.schedule.enabled")
+      .booleanType()
+      .defaultValue(true)
+      .withDescription("Schedule the compaction plan for metadata table, enabled by default.");
+
+  public static final ConfigOption<Boolean> METADATA_COMPACTION_ASYNC_ENABLED = ConfigOptions
+      .key("metadata.compaction.async.enabled")
+      .booleanType()
+      .defaultValue(true)
+      .withDescription("Async Compaction for metadata table.");
+
   public static final ConfigOption<Integer> METADATA_COMPACTION_DELTA_COMMITS = ConfigOptions
       .key("metadata.compaction.delta_commits")
       .intType()

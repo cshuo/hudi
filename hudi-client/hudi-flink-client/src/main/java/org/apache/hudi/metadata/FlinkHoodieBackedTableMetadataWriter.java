@@ -105,6 +105,11 @@ public class FlinkHoodieBackedTableMetadataWriter extends HoodieBackedTableMetad
   }
 
   @Override
+  public BaseHoodieWriteClient<?, List<HoodieRecord>, ?, List<WriteStatus>> getWriteClient() {
+    return super.getWriteClient();
+  }
+
+  @Override
   protected void updateColumnsToIndexWithColStats(List<String> columnsToIndex) {
     // no op. HUDI-8801 to fix.
   }
@@ -133,7 +138,9 @@ public class FlinkHoodieBackedTableMetadataWriter extends HoodieBackedTableMetad
   @Override
   protected void commitInternal(String instantTime, Map<String, HoodieData<HoodieRecord>> partitionRecordsMap, boolean isInitializing,
                                 Option<BulkInsertPartitioner> bulkInsertPartitioner) {
-    performTableServices(Option.ofNullable(instantTime), false);
+    if (!dataWriteConfig.getMetadataConfig().isStreamingWriteEnabled()) {
+      performTableServices(Option.ofNullable(instantTime), false);
+    }
     metadataMetaClient.reloadActiveTimeline();
     super.commitInternal(instantTime, partitionRecordsMap, isInitializing, bulkInsertPartitioner);
   }
