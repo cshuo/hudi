@@ -251,7 +251,16 @@ public class OptionsResolver {
    */
   public static boolean needsAsyncCompaction(Configuration conf) {
     return (OptionsResolver.isMorTable(conf) && conf.get(FlinkOptions.COMPACTION_ASYNC_ENABLED))
-        || (isStreamingIndexWriteEnabled(conf) && conf.get(FlinkOptions.METADATA_COMPACTION_ASYNC_ENABLED));
+        || needsAsyncMetadataCompaction(conf);
+  }
+
+  /**
+   * Returns whether there is need to schedule the async compaction.
+   *
+   * @param conf The flink configuration.
+   */
+  public static boolean needsAsyncMetadataCompaction(Configuration conf) {
+    return isStreamingIndexWriteEnabled(conf) && conf.get(FlinkOptions.METADATA_COMPACTION_ASYNC_ENABLED);
   }
 
   /**

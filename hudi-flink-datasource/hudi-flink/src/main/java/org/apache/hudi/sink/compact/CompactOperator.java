@@ -102,11 +102,6 @@ public class CompactOperator extends TableStreamOperator<CompactionCommitEvent>
   private final boolean asyncCompaction;
 
   /**
-   * Whether the streaming write to metadata table is enabled.
-   */
-  private final boolean isStreamingIndexWriteEnabled;
-
-  /**
    * Id of current subtask.
    */
   private int taskID;
@@ -139,7 +134,6 @@ public class CompactOperator extends TableStreamOperator<CompactionCommitEvent>
   public CompactOperator(Configuration conf) {
     this.conf = conf;
     this.asyncCompaction = OptionsResolver.needsAsyncCompaction(conf);
-    this.isStreamingIndexWriteEnabled = OptionsResolver.isStreamingIndexWriteEnabled(conf);
   }
 
   /**
@@ -169,15 +163,6 @@ public class CompactOperator extends TableStreamOperator<CompactionCommitEvent>
       this.executor = NonThrownExecutor.builder(log).build();
     }
     this.collector = new StreamRecordCollector<>(output);
-    if (isStreamingIndexWriteEnabled) {
-      // Get the metadata writer from the table and use its write client
-      Option<HoodieTableMetadataWriter> metadataWriterOpt =
-          this.writeClient.getHoodieTable().getMetadataWriter(null, true, true);
-      ValidationUtils.checkArgument(metadataWriterOpt.isPresent(), "Failed to close the metadata writer");
-      FlinkHoodieBackedTableMetadataWriter metadataWriter = (FlinkHoodieBackedTableMetadataWriter) metadataWriterOpt.get();
-      this.metadataWriteClient = (HoodieFlinkWriteClient) metadataWriter.getWriteClient();
-      this.metadataTable = metadataWriteClient.getHoodieTable();
-    }
     registerMetrics();
   }
 
@@ -190,6 +175,7 @@ public class CompactOperator extends TableStreamOperator<CompactionCommitEvent>
     prevCompactInstant = instantTime;
 
     if (event.isMetadataTable()) {
+      initializeMetadataClientIfNecessary();
       // Handle metadata table compaction
       if (asyncCompaction) {
         // executes the compaction task asynchronously to not block the checkpoint barrier propagate.
@@ -216,6 +202,19 @@ public class CompactOperator extends TableStreamOperator<CompactionCommitEvent>
         doCompaction(instantTime, compactionOperation, collector, writeClient.getConfig(), needReloadMetaClient);
       }
     }
+  }
+
+  private void initializeMetadataClientIfNecessary() {
+    if (this.metadataWriteClient != null) {
+      return;
+    }
+    // Get the metadata writer from the table and use its write client
+    Option<HoodieTableMetadataWriter> metadataWriterOpt =
+        this.writeClient.getHoodieTable().getMetadataWriter(null, true, true);
+    ValidationUtils.checkArgument(metadataWriterOpt.isPresent(), "Failed to close the metadata writer");
+    FlinkHoodieBackedTableMetadataWriter metadataWriter = (FlinkHoodieBackedTableMetadataWriter) metadataWriterOpt.get();
+    this.metadataWriteClient = (HoodieFlinkWriteClient) metadataWriter.getWriteClient();
+    this.metadataTable = metadataWriteClient.getHoodieTable();
   }
 
   private void doCompaction(String instantTime,

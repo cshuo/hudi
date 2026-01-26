@@ -72,9 +72,9 @@ public class CompactionPlanOperator extends AbstractStreamOperator<CompactionPla
   private final Configuration conf;
 
   /**
-   * Whether the streaming write to metadata table is enabled.
+   * Whether the compaction for metadata is enabled.
    */
-  private final boolean isStreamingIndexWriteEnabled;
+  private final boolean metadataCompactionEnabled;
 
   /**
    * Meta Client.
@@ -96,7 +96,7 @@ public class CompactionPlanOperator extends AbstractStreamOperator<CompactionPla
 
   public CompactionPlanOperator(Configuration conf) {
     this.conf = conf;
-    this.isStreamingIndexWriteEnabled = OptionsResolver.isStreamingIndexWriteEnabled(conf);
+    this.metadataCompactionEnabled = OptionsResolver.needsAsyncMetadataCompaction(conf);
   }
 
   @Override
@@ -106,7 +106,7 @@ public class CompactionPlanOperator extends AbstractStreamOperator<CompactionPla
     this.table = FlinkTables.createTable(conf, getRuntimeContext());
     this.metaClient = table.getMetaClient();
     this.writeClient = FlinkWriteClients.createWriteClient(conf, getRuntimeContext());
-    if (isStreamingIndexWriteEnabled) {
+    if (metadataCompactionEnabled) {
       // Get the metadata writer from the table and use its write client
       Option<HoodieTableMetadataWriter> metadataWriterOpt =
           this.writeClient.getHoodieTable().getMetadataWriter(null, true, true);
@@ -159,7 +159,7 @@ public class CompactionPlanOperator extends AbstractStreamOperator<CompactionPla
       // CompactionUtil.rollbackEarliestCompaction(table, conf);
       scheduleCompaction(table, metaClient, checkpointId, false);
       // Also schedule metadata table compaction if enabled
-      if (isStreamingIndexWriteEnabled) {
+      if (metadataCompactionEnabled) {
         scheduleCompaction(metadataTable, metadataMetaClient, checkpointId, true);
       }
     } catch (Throwable throwable) {

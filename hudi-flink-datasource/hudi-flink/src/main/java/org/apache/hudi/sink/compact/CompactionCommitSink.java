@@ -28,7 +28,6 @@ import org.apache.hudi.common.util.CompactionUtils;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.ValidationUtils;
 import org.apache.hudi.configuration.FlinkOptions;
-import org.apache.hudi.configuration.OptionsResolver;
 import org.apache.hudi.exception.HoodieException;
 import org.apache.hudi.metadata.FlinkHoodieBackedTableMetadataWriter;
 import org.apache.hudi.metadata.HoodieTableMetadataWriter;
@@ -101,11 +100,6 @@ public class CompactionCommitSink extends CleanFunction<CompactionCommitEvent> {
   private transient HoodieFlinkWriteClient metadataWriteClient;
 
   /**
-   * Whether the streaming write to metadata table is enabled.
-   */
-  private final boolean isStreamingIndexWriteEnabled;
-
-  /**
    * The hoodie table.
    */
   private transient HoodieFlinkTable<?> table;
@@ -123,7 +117,6 @@ public class CompactionCommitSink extends CleanFunction<CompactionCommitEvent> {
   public CompactionCommitSink(Configuration conf) {
     super(conf);
     this.conf = conf;
-    this.isStreamingIndexWriteEnabled = OptionsResolver.isStreamingIndexWriteEnabled(conf);
   }
 
   @Override
@@ -137,15 +130,6 @@ public class CompactionCommitSink extends CleanFunction<CompactionCommitEvent> {
     this.compactionPlanCache = new HashMap<>();
     this.metadataCompactionPlanCache = new HashMap<>();
     this.table = this.writeClient.getHoodieTable();
-    if (isStreamingIndexWriteEnabled) {
-      // Get the metadata writer from the table and use its write client
-      Option<HoodieTableMetadataWriter> metadataWriterOpt =
-          this.writeClient.getHoodieTable().getMetadataWriter(null, true, true);
-      ValidationUtils.checkArgument(metadataWriterOpt.isPresent(), "Failed to close the metadata writer");
-      FlinkHoodieBackedTableMetadataWriter metadataWriter = (FlinkHoodieBackedTableMetadataWriter) metadataWriterOpt.get();
-      this.metadataWriteClient = (HoodieFlinkWriteClient) metadataWriter.getWriteClient();
-      this.metadataTable = metadataWriteClient.getHoodieTable();
-    }
     registerMetrics();
   }
 
@@ -160,6 +144,7 @@ public class CompactionCommitSink extends CleanFunction<CompactionCommitEvent> {
           instant, event.getTaskID(), event.isFailed(), getNumErrorRecords(event));
     }
     if (event.isMetadataTable()) {
+      initializeMetadataClientIfNecessary();
       metadataCommitBuffer.computeIfAbsent(instant, k -> new HashMap<>())
           .put(event.getFileId(), event);
       commitIfNecessary(metadataTable, metadataWriteClient, instant, metadataCommitBuffer.get(instant).values(), getCompactionPlan(event), event.isLogCompaction());
@@ -168,6 +153,19 @@ public class CompactionCommitSink extends CleanFunction<CompactionCommitEvent> {
           .put(event.getFileId(), event);
       commitIfNecessary(table, writeClient, instant, commitBuffer.get(instant).values(), getCompactionPlan(event), event.isLogCompaction());
     }
+  }
+
+  private void initializeMetadataClientIfNecessary() {
+    if (this.metadataWriteClient != null) {
+      return;
+    }
+    // Get the metadata writer from the table and use its write client
+    Option<HoodieTableMetadataWriter> metadataWriterOpt =
+        this.writeClient.getHoodieTable().getMetadataWriter(null, true, true);
+    ValidationUtils.checkArgument(metadataWriterOpt.isPresent(), "Failed to close the metadata writer");
+    FlinkHoodieBackedTableMetadataWriter metadataWriter = (FlinkHoodieBackedTableMetadataWriter) metadataWriterOpt.get();
+    this.metadataWriteClient = (HoodieFlinkWriteClient) metadataWriter.getWriteClient();
+    this.metadataTable = metadataWriteClient.getHoodieTable();
   }
 
   private HoodieCompactionPlan getCompactionPlan(CompactionCommitEvent event) {
