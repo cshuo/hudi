@@ -57,7 +57,7 @@ public class TestRecordIndexCache {
   }
 
   @AfterEach
-  void clean() throws IOException {
+  void markCleanable() throws IOException {
     this.cache.close();
   }
 
@@ -150,7 +150,7 @@ public class TestRecordIndexCache {
   }
 
   @Test
-  void testClean() {
+  void testMarkCleanable() {
     cache.addCheckpointCache(2L);
     cache.addCheckpointCache(3L);
     cache.addCheckpointCache(4L);
@@ -169,7 +169,7 @@ public class TestRecordIndexCache {
     assertNotNull(cache.get(recordKey2));
     
     // Clean checkpoints up to and including 2
-    cache.clean(3L);
+    cache.markCleanable(3L);
     
     // Check that checkpoints 1 and 2 are removed
     assertEquals(2, cache.getCaches().size()); // Should have checkpoints 3 and 4
