@@ -49,6 +49,7 @@ import org.apache.hudi.sink.common.WriteOperatorFactory;
 import org.apache.hudi.sink.compact.CompactOperator;
 import org.apache.hudi.sink.compact.CompactionCommitEvent;
 import org.apache.hudi.sink.compact.CompactionCommitSink;
+import org.apache.hudi.sink.compact.CompactionExecutionMode;
 import org.apache.hudi.sink.compact.CompactionPlanEvent;
 import org.apache.hudi.sink.compact.CompactionPlanOperator;
 import org.apache.hudi.sink.partitioner.BucketAssignFunction;
@@ -451,6 +452,10 @@ public class Pipelines {
     }
   }
 
+  public static DataStreamSink<CompactionCommitEvent> compact(Configuration conf, DataStream<RowData> dataStream) {
+    return compact(conf, dataStream, CompactionExecutionMode.DATA_TABLE);
+  }
+
   /**
    * The compaction tasks pipeline.
    *
@@ -467,22 +472,23 @@ public class Pipelines {
    *      Note: both the compaction plan generation task and commission task are singleton.
    * </pre>
    *
-   * @param conf       The configuration
-   * @param dataStream The input data stream
+   * @param conf                    The configuration
+   * @param dataStream              The input data stream
+   * @param compactionExecutionMode The compaction execution mode
    * @return the compaction pipeline
    */
-  public static DataStreamSink<CompactionCommitEvent> compact(Configuration conf, DataStream<RowData> dataStream) {
+  public static DataStreamSink<CompactionCommitEvent> compact(Configuration conf, DataStream<RowData> dataStream, CompactionExecutionMode compactionExecutionMode) {
     DataStreamSink<CompactionCommitEvent> compactionCommitEventDataStream = dataStream.transform("compact_plan_generate",
             TypeInformation.of(CompactionPlanEvent.class),
-            new CompactionPlanOperator(conf))
+            new CompactionPlanOperator(conf, compactionExecutionMode))
         .setParallelism(1) // plan generate must be singleton
         .setMaxParallelism(1)
         .partitionCustom(new IndexPartitioner(), CompactionPlanEvent::getIndex)
         .transform("compact_task",
             TypeInformation.of(CompactionCommitEvent.class),
-            new CompactOperator(conf))
+            new CompactOperator(conf, compactionExecutionMode))
         .setParallelism(conf.get(FlinkOptions.COMPACTION_TASKS))
-        .addSink(new CompactionCommitSink(conf))
+        .addSink(new CompactionCommitSink(conf, compactionExecutionMode))
         .name("compact_commit")
         .setParallelism(1); // compaction commit should be singleton
     compactionCommitEventDataStream.getTransformation().setMaxParallelism(1);

@@ -25,6 +25,7 @@ import org.apache.hudi.configuration.FlinkOptions;
 import org.apache.hudi.configuration.OptionsInference;
 import org.apache.hudi.configuration.OptionsResolver;
 import org.apache.hudi.exception.HoodieException;
+import org.apache.hudi.sink.compact.CompactionExecutionMode;
 import org.apache.hudi.sink.utils.Pipelines;
 import org.apache.hudi.util.ChangelogModes;
 import org.apache.hudi.util.DataModificationInfos;
@@ -125,13 +126,14 @@ public class HoodieTableSink implements
       final DataStream<HoodieFlinkInternalRow> hoodieRecordDataStream = Pipelines.bootstrap(conf, rowType, dataStream, context.isBounded(), overwrite);
       pipeline = Pipelines.hoodieStreamWrite(conf, rowType, hoodieRecordDataStream);
       // compaction
-      if (OptionsResolver.needsAsyncCompaction(conf)) {
+      CompactionExecutionMode compactionExecutionMode = CompactionExecutionMode.fromConf(conf);
+      if (compactionExecutionMode != CompactionExecutionMode.NONE) {
         // use synchronous compaction for bounded source.
         if (context.isBounded()) {
           conf.set(FlinkOptions.COMPACTION_ASYNC_ENABLED, false);
           conf.set(FlinkOptions.METADATA_COMPACTION_ASYNC_ENABLED, false);
         }
-        return Pipelines.compact(conf, pipeline);
+        return Pipelines.compact(conf, pipeline, compactionExecutionMode);
       } else {
         return Pipelines.clean(conf, pipeline);
       }

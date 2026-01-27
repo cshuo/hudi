@@ -23,6 +23,7 @@ import org.apache.hudi.avro.model.HoodieCompactionPlan;
 import org.apache.hudi.sink.compact.CompactOperator;
 import org.apache.hudi.sink.compact.CompactionCommitEvent;
 import org.apache.hudi.sink.compact.CompactionCommitSink;
+import org.apache.hudi.sink.compact.CompactionExecutionMode;
 import org.apache.hudi.sink.compact.CompactionPlanEvent;
 import org.apache.hudi.sink.compact.CompactionPlanOperator;
 
@@ -87,12 +88,13 @@ public class CompactFunctionWrapper {
   }
 
   public void openFunction() throws Exception {
-    compactionPlanOperator = new CompactionPlanOperator(conf);
+    CompactionExecutionMode mode = CompactionExecutionMode.fromConf(conf);
+    compactionPlanOperator = new CompactionPlanOperator(conf, mode);
     planEventOutput = new CollectOutputAdapter<>();
     compactionPlanOperator.setup(streamTask, streamConfig, planEventOutput);
     compactionPlanOperator.open();
 
-    compactOperator = new CompactOperator(conf);
+    compactOperator = new CompactOperator(conf, mode);
     // CAUTION: deprecated API used.
     compactOperator.setProcessingTimeService(new TestProcessingTimeService());
     commitEventOutput = new CollectOutputAdapter<>();
@@ -102,7 +104,7 @@ public class CompactFunctionWrapper {
         new MockOperatorCoordinatorContext(new OperatorID(), 1));
     compactOperator.setExecutor(syncExecutor);
 
-    commitSink = new CompactionCommitSink(conf);
+    commitSink = new CompactionCommitSink(conf, mode);
     commitSink.setRuntimeContext(runtimeContext);
     commitSink.open(conf);
   }
