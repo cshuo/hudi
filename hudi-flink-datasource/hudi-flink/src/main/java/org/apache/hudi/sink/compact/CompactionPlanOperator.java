@@ -27,6 +27,7 @@ import org.apache.hudi.common.table.timeline.HoodieTimeline;
 import org.apache.hudi.common.util.CompactionUtils;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.ValidationUtils;
+import org.apache.hudi.configuration.OptionsResolver;
 import org.apache.hudi.metadata.FlinkHoodieBackedTableMetadataWriter;
 import org.apache.hudi.metadata.HoodieTableMetadataWriter;
 import org.apache.hudi.metrics.FlinkCompactionMetrics;
@@ -71,6 +72,11 @@ public class CompactionPlanOperator extends AbstractStreamOperator<CompactionPla
   private final Configuration conf;
 
   /**
+   * Whether the streaming write to metadata table is enabled.
+   */
+  private final boolean isStreamingIndexWriteEnabled;
+
+  /**
    * Meta Client.
    */
   @SuppressWarnings("rawtypes")
@@ -88,15 +94,9 @@ public class CompactionPlanOperator extends AbstractStreamOperator<CompactionPla
 
   private transient HoodieFlinkWriteClient metadataWriteClient;
 
-  private final CompactionExecutionMode compactionExecutionMode;
-
   public CompactionPlanOperator(Configuration conf) {
-    this(conf, CompactionExecutionMode.DATA_TABLE);
-  }
-
-  public CompactionPlanOperator(Configuration conf, CompactionExecutionMode compactionExecutionMode) {
     this.conf = conf;
-    this.compactionExecutionMode = compactionExecutionMode;
+    this.isStreamingIndexWriteEnabled = OptionsResolver.isStreamingIndexWriteEnabled(conf);
   }
 
   @Override
@@ -106,7 +106,7 @@ public class CompactionPlanOperator extends AbstractStreamOperator<CompactionPla
     this.table = FlinkTables.createTable(conf, getRuntimeContext());
     this.metaClient = table.getMetaClient();
     this.writeClient = FlinkWriteClients.createWriteClient(conf, getRuntimeContext());
-    if (CompactionExecutionMode.isMetadataCompaction(compactionExecutionMode)) {
+    if (isStreamingIndexWriteEnabled) {
       // Get the metadata writer from the table and use its write client
       Option<HoodieTableMetadataWriter> metadataWriterOpt =
           this.writeClient.getHoodieTable().getMetadataWriter(null, true, true);
@@ -120,13 +120,7 @@ public class CompactionPlanOperator extends AbstractStreamOperator<CompactionPla
     // when starting up, rolls back all the inflight compaction instants if there exists,
     // these instants are in priority for scheduling task because the compaction instants are
     // scheduled from earliest(FIFO sequence).
-    if (CompactionExecutionMode.isDataCompaction(compactionExecutionMode)) {
-      CompactionUtil.rollbackCompaction(table, this.writeClient);
-    }
-    if (CompactionExecutionMode.isMetadataCompaction(compactionExecutionMode)) {
-      CompactionUtil.rollbackCompaction(metadataTable, this.metadataWriteClient);
-      CompactionUtil.rollbackLogCompaction(metadataTable, this.metadataWriteClient);
-    }
+    CompactionUtil.rollbackCompaction(table, this.writeClient);
   }
 
   /**
@@ -163,11 +157,9 @@ public class CompactionPlanOperator extends AbstractStreamOperator<CompactionPla
 
       // comment out: do we really need the timeout rollback ?
       // CompactionUtil.rollbackEarliestCompaction(table, conf);
-      if (CompactionExecutionMode.isDataCompaction(compactionExecutionMode)) {
-        scheduleCompaction(table, metaClient, checkpointId, false);
-      }
+      scheduleCompaction(table, metaClient, checkpointId, false);
       // Also schedule metadata table compaction if enabled
-      if (CompactionExecutionMode.isMetadataCompaction(compactionExecutionMode)) {
+      if (isStreamingIndexWriteEnabled) {
         scheduleCompaction(metadataTable, metadataMetaClient, checkpointId, true);
       }
     } catch (Throwable throwable) {
@@ -249,17 +241,6 @@ public class CompactionPlanOperator extends AbstractStreamOperator<CompactionPla
             new CompactionPlanEvent(compactionInstantTime, operation, operationIndex, isMetadataTable, isLogCompaction)));
       }
     }
-  }
-
-  @Override
-  public void close() throws Exception {
-    if (null != writeClient) {
-      this.writeClient.close();
-    }
-    if (null != metadataWriteClient) {
-      this.metadataWriteClient.close();
-    }
-    super.close();
   }
 
   @VisibleForTesting

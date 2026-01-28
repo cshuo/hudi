@@ -238,7 +238,7 @@ public class StreamWriteOperatorCoordinator
       this.writeClient.tryUpgrade(instant, this.metaClient);
       initMetadataTable(this.writeClient);
 
-      if (tableState.scheduleMdtCompaction) {
+      if (isStreamingIndexWriteEnabled) {
         // Get the metadata writer from the table and use its write client
         Option<HoodieTableMetadataWriter> metadataWriterOpt =
             this.writeClient.getHoodieTable().getMetadataWriter(null, true, true);

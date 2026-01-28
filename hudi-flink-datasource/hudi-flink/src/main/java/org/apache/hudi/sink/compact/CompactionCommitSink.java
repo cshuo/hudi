@@ -28,6 +28,7 @@ import org.apache.hudi.common.util.CompactionUtils;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.ValidationUtils;
 import org.apache.hudi.configuration.FlinkOptions;
+import org.apache.hudi.configuration.OptionsResolver;
 import org.apache.hudi.exception.HoodieException;
 import org.apache.hudi.metadata.FlinkHoodieBackedTableMetadataWriter;
 import org.apache.hudi.metadata.HoodieTableMetadataWriter;
@@ -100,9 +101,9 @@ public class CompactionCommitSink extends CleanFunction<CompactionCommitEvent> {
   private transient HoodieFlinkWriteClient metadataWriteClient;
 
   /**
-   * The compaction execution mode.
+   * Whether the streaming write to metadata table is enabled.
    */
-  private final CompactionExecutionMode compactionExecutionMode;
+  private final boolean isStreamingIndexWriteEnabled;
 
   /**
    * The hoodie table.
@@ -120,13 +121,9 @@ public class CompactionCommitSink extends CleanFunction<CompactionCommitEvent> {
   private transient FlinkCompactionMetrics compactionMetrics;
 
   public CompactionCommitSink(Configuration conf) {
-    this(conf, CompactionExecutionMode.DATA_TABLE);
-  }
-
-  public CompactionCommitSink(Configuration conf, CompactionExecutionMode compactionExecutionMode) {
     super(conf);
     this.conf = conf;
-    this.compactionExecutionMode = compactionExecutionMode;
+    this.isStreamingIndexWriteEnabled = OptionsResolver.isStreamingIndexWriteEnabled(conf);
   }
 
   @Override
@@ -140,7 +137,7 @@ public class CompactionCommitSink extends CleanFunction<CompactionCommitEvent> {
     this.compactionPlanCache = new HashMap<>();
     this.metadataCompactionPlanCache = new HashMap<>();
     this.table = this.writeClient.getHoodieTable();
-    if (CompactionExecutionMode.isMetadataCompaction(compactionExecutionMode)) {
+    if (isStreamingIndexWriteEnabled) {
       // Get the metadata writer from the table and use its write client
       Option<HoodieTableMetadataWriter> metadataWriterOpt =
           this.writeClient.getHoodieTable().getMetadataWriter(null, true, true);
@@ -171,14 +168,6 @@ public class CompactionCommitSink extends CleanFunction<CompactionCommitEvent> {
           .put(event.getFileId(), event);
       commitIfNecessary(table, writeClient, instant, commitBuffer.get(instant).values(), getCompactionPlan(event), event.isLogCompaction());
     }
-  }
-
-  @Override
-  public void close() throws Exception {
-    if (null != metadataWriteClient) {
-      this.metadataWriteClient.close();
-    }
-    super.close();
   }
 
   private HoodieCompactionPlan getCompactionPlan(CompactionCommitEvent event) {
