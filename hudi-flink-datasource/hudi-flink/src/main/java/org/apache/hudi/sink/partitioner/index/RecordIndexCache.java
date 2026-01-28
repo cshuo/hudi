@@ -140,7 +140,7 @@ public class RecordIndexCache implements Closeable {
    */
   public void markCleanable(long checkpointId) {
     // all previous instants are committed successfully, so all index
-    ValidationUtils.checkArgument(checkpointId > ckpIdForMinInflightInstant,
+    ValidationUtils.checkArgument(checkpointId >= ckpIdForMinInflightInstant,
         "The checkpoint id for minium inflight instant should be increased.");
     log.info("The checkpoint id for the minimum inflight instant is: {}", checkpointId);
     ckpIdForMinInflightInstant = checkpointId;
