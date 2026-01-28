@@ -218,6 +218,25 @@ public class CompactionUtil {
   }
 
   /**
+   * Force rolls back all the inflight log compaction instants, especially for job failover restart.
+   *
+   * @param table The hoodie table
+   */
+  public static void rollbackLogCompaction(HoodieFlinkTable<?> table, HoodieFlinkWriteClient writeClient) {
+    HoodieTimeline inflightCompactionTimeline = table.getActiveTimeline()
+        .filterPendingLogCompactionTimeline()
+        .filter(instant ->
+            instant.getState() == HoodieInstant.State.INFLIGHT);
+    inflightCompactionTimeline.getInstants().forEach(inflightInstant -> {
+      log.info("Rollback the inflight log compaction instant: {} for failover", inflightInstant);
+      table.rollbackInflightLogCompaction(inflightInstant, writeClient.getTransactionManager());
+    });
+    if (!inflightCompactionTimeline.getInstants().isEmpty()) {
+      table.getMetaClient().reloadActiveTimeline();
+    }
+  }
+
+  /**
    * Force rolls back all the inflight compaction instants, especially for job failover restart.
    *
    * @param table The hoodie table

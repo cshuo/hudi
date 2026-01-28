@@ -101,11 +101,6 @@ public class CompactionCommitSink extends CleanFunction<CompactionCommitEvent> {
   private transient HoodieFlinkWriteClient metadataWriteClient;
 
   /**
-   * Whether the streaming write to metadata table is enabled.
-   */
-  private final boolean isStreamingIndexWriteEnabled;
-
-  /**
    * The hoodie table.
    */
   private transient HoodieFlinkTable<?> table;
@@ -123,7 +118,6 @@ public class CompactionCommitSink extends CleanFunction<CompactionCommitEvent> {
   public CompactionCommitSink(Configuration conf) {
     super(conf);
     this.conf = conf;
-    this.isStreamingIndexWriteEnabled = OptionsResolver.isStreamingIndexWriteEnabled(conf);
   }
 
   @Override
@@ -137,7 +131,7 @@ public class CompactionCommitSink extends CleanFunction<CompactionCommitEvent> {
     this.compactionPlanCache = new HashMap<>();
     this.metadataCompactionPlanCache = new HashMap<>();
     this.table = this.writeClient.getHoodieTable();
-    if (isStreamingIndexWriteEnabled) {
+    if (OptionsResolver.needsAsyncMetadataCompaction(conf)) {
       // Get the metadata writer from the table and use its write client
       Option<HoodieTableMetadataWriter> metadataWriterOpt =
           this.writeClient.getHoodieTable().getMetadataWriter(null, true, true);
@@ -168,6 +162,14 @@ public class CompactionCommitSink extends CleanFunction<CompactionCommitEvent> {
           .put(event.getFileId(), event);
       commitIfNecessary(table, writeClient, instant, commitBuffer.get(instant).values(), getCompactionPlan(event), event.isLogCompaction());
     }
+  }
+
+  @Override
+  public void close() throws Exception {
+    if (null != metadataWriteClient) {
+      this.metadataWriteClient.close();
+    }
+    super.close();
   }
 
   private HoodieCompactionPlan getCompactionPlan(CompactionCommitEvent event) {

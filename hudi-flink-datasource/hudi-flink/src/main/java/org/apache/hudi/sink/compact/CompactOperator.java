@@ -49,6 +49,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.MetricGroup;
+import org.apache.flink.runtime.jobgraph.JobType;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.operators.Output;
@@ -99,12 +100,12 @@ public class CompactOperator extends TableStreamOperator<CompactionCommitEvent>
   /**
    * Whether to execute compaction asynchronously.
    */
-  private final boolean asyncCompaction;
+  private transient boolean asyncCompaction;
 
   /**
-   * Whether the streaming write to metadata table is enabled.
+   * Whether to execute metadata compaction asynchronously.
    */
-  private final boolean isStreamingIndexWriteEnabled;
+  private transient boolean asyncMdtCompaction;
 
   /**
    * Id of current subtask.
@@ -138,8 +139,6 @@ public class CompactOperator extends TableStreamOperator<CompactionCommitEvent>
 
   public CompactOperator(Configuration conf) {
     this.conf = conf;
-    this.asyncCompaction = OptionsResolver.needsAsyncCompaction(conf);
-    this.isStreamingIndexWriteEnabled = OptionsResolver.isStreamingIndexWriteEnabled(conf);
   }
 
   /**
@@ -162,14 +161,16 @@ public class CompactOperator extends TableStreamOperator<CompactionCommitEvent>
 
   @Override
   public void open() throws Exception {
+    this.asyncCompaction = OptionsResolver.needsAsyncCompaction(conf) && getRuntimeContext().getJobType() == JobType.STREAMING;
+    this.asyncMdtCompaction = OptionsResolver.needsAsyncMetadataCompaction(conf) && getRuntimeContext().getJobType() == JobType.STREAMING;
     this.taskID = RuntimeContextUtils.getIndexOfThisSubtask(getRuntimeContext());
     this.writeClient = FlinkWriteClients.createWriteClient(conf, getRuntimeContext());
     this.flinkTable = this.writeClient.getHoodieTable();
-    if (this.asyncCompaction) {
+    if (this.asyncCompaction || this.asyncMdtCompaction) {
       this.executor = NonThrownExecutor.builder(log).build();
     }
     this.collector = new StreamRecordCollector<>(output);
-    if (isStreamingIndexWriteEnabled) {
+    if (OptionsResolver.needsAsyncMetadataCompaction(conf)) {
       // Get the metadata writer from the table and use its write client
       Option<HoodieTableMetadataWriter> metadataWriterOpt =
           this.writeClient.getHoodieTable().getMetadataWriter(null, true, true);
@@ -191,7 +192,7 @@ public class CompactOperator extends TableStreamOperator<CompactionCommitEvent>
 
     if (event.isMetadataTable()) {
       // Handle metadata table compaction
-      if (asyncCompaction) {
+      if (asyncMdtCompaction) {
         // executes the compaction task asynchronously to not block the checkpoint barrier propagate.
         executor.execute(
             () -> doMetadataTableCompaction(instantTime, compactionOperation, collector, metadataWriteClient.getConfig(), event.isLogCompaction(), needReloadMetaClient),
@@ -320,6 +321,9 @@ public class CompactOperator extends TableStreamOperator<CompactionCommitEvent>
     if (null != this.writeClient) {
       this.writeClient.close();
       this.writeClient = null;
+    }
+    if (null != metadataWriteClient) {
+      this.metadataWriteClient.close();
     }
   }
 

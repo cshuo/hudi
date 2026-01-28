@@ -72,9 +72,15 @@ public class CompactionPlanOperator extends AbstractStreamOperator<CompactionPla
   private final Configuration conf;
 
   /**
-   * Whether the streaming write to metadata table is enabled.
+   * Whether data compaction is enabled
    */
-  private final boolean isStreamingIndexWriteEnabled;
+  private final boolean dataCompactionEnabled;
+
+  /**
+   * Whether mdt compaction is enabled
+   */
+  private final boolean mdtCompactionEnabled;
+
 
   /**
    * Meta Client.
@@ -84,10 +90,6 @@ public class CompactionPlanOperator extends AbstractStreamOperator<CompactionPla
 
   private transient HoodieFlinkTable metadataTable;
 
-  private transient HoodieTableMetaClient metaClient;
-
-  private transient HoodieTableMetaClient metadataMetaClient;
-
   private transient FlinkCompactionMetrics compactionMetrics;
 
   private transient HoodieFlinkWriteClient writeClient;
@@ -96,7 +98,8 @@ public class CompactionPlanOperator extends AbstractStreamOperator<CompactionPla
 
   public CompactionPlanOperator(Configuration conf) {
     this.conf = conf;
-    this.isStreamingIndexWriteEnabled = OptionsResolver.isStreamingIndexWriteEnabled(conf);
+    this.dataCompactionEnabled = OptionsResolver.needsAsyncCompaction(conf);
+    this.mdtCompactionEnabled = OptionsResolver.needsAsyncMetadataCompaction(conf);
   }
 
   @Override
@@ -104,9 +107,8 @@ public class CompactionPlanOperator extends AbstractStreamOperator<CompactionPla
     super.open();
     registerMetrics();
     this.table = FlinkTables.createTable(conf, getRuntimeContext());
-    this.metaClient = table.getMetaClient();
     this.writeClient = FlinkWriteClients.createWriteClient(conf, getRuntimeContext());
-    if (isStreamingIndexWriteEnabled) {
+    if (mdtCompactionEnabled) {
       // Get the metadata writer from the table and use its write client
       Option<HoodieTableMetadataWriter> metadataWriterOpt =
           this.writeClient.getHoodieTable().getMetadataWriter(null, true, true);
@@ -114,13 +116,20 @@ public class CompactionPlanOperator extends AbstractStreamOperator<CompactionPla
       FlinkHoodieBackedTableMetadataWriter metadataWriter = (FlinkHoodieBackedTableMetadataWriter) metadataWriterOpt.get();
       this.metadataWriteClient = (HoodieFlinkWriteClient) metadataWriter.getWriteClient();
       this.metadataTable = metadataWriteClient.getHoodieTable();
-      this.metadataMetaClient = metadataTable.getMetaClient();
     }
 
     // when starting up, rolls back all the inflight compaction instants if there exists,
     // these instants are in priority for scheduling task because the compaction instants are
     // scheduled from earliest(FIFO sequence).
-    CompactionUtil.rollbackCompaction(table, this.writeClient);
+    if (dataCompactionEnabled) {
+      CompactionUtil.rollbackCompaction(table, this.writeClient);
+    }
+    if (mdtCompactionEnabled) {
+      CompactionUtil.rollbackCompaction(metadataTable, this.metadataWriteClient);
+      if (metadataWriteClient.getConfig().isLogCompactionEnabled()) {
+        CompactionUtil.rollbackLogCompaction(metadataTable, this.metadataWriteClient);
+      }
+    }
   }
 
   /**
@@ -157,10 +166,12 @@ public class CompactionPlanOperator extends AbstractStreamOperator<CompactionPla
 
       // comment out: do we really need the timeout rollback ?
       // CompactionUtil.rollbackEarliestCompaction(table, conf);
-      scheduleCompaction(table, metaClient, checkpointId, false);
+      if (dataCompactionEnabled) {
+        scheduleCompaction(table, checkpointId, false);
+      }
       // Also schedule metadata table compaction if enabled
-      if (isStreamingIndexWriteEnabled) {
-        scheduleCompaction(metadataTable, metadataMetaClient, checkpointId, true);
+      if (mdtCompactionEnabled) {
+        scheduleCompaction(metadataTable, checkpointId, true);
       }
     } catch (Throwable throwable) {
       // make it fail-safe
@@ -170,9 +181,9 @@ public class CompactionPlanOperator extends AbstractStreamOperator<CompactionPla
 
   private void scheduleCompaction(
       HoodieFlinkTable table,
-      HoodieTableMetaClient metaClient,
       long checkpointId,
       boolean isMetadataTable) {
+    HoodieTableMetaClient metaClient = table.getMetaClient();
     metaClient.reloadActiveTimeline();
     HoodieTimeline pendingCompactionTimeline = metaClient.getActiveTimeline().filterPendingCompactionTimeline();
 
@@ -246,6 +257,17 @@ public class CompactionPlanOperator extends AbstractStreamOperator<CompactionPla
   @VisibleForTesting
   public void setOutput(Output<StreamRecord<CompactionPlanEvent>> output) {
     this.output = output;
+  }
+
+  @Override
+  public void close() throws Exception {
+    if (null != writeClient) {
+      this.writeClient.close();
+    }
+    if (null != metadataWriteClient) {
+      this.metadataWriteClient.close();
+    }
+    super.close();
   }
 
   @Override
