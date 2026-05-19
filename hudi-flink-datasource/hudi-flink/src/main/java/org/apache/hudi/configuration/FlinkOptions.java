@@ -409,6 +409,27 @@ public class FlinkOptions extends HoodieConfig {
           + "By default false. Turning this on, could hide the write status errors while the flink checkpoint moves ahead. \n"
           + "So, would recommend users to use this with caution.");
 
+  @AdvancedConfig
+  public static final ConfigOption<Boolean> APPEND_WRITE_CLOSE_ENABLED = ConfigOptions
+      .key("append.write.closed.enabled")
+      .booleanType()
+      .defaultValue(true)
+      .withDescription("Whether to close the writeHelper in the append write function.");
+
+  @AdvancedConfig
+  public static final ConfigOption<Boolean> THROW_EXCEPTION_ENABLED = ConfigOptions
+      .key("append.write.throw.exception.enabled")
+      .booleanType()
+      .defaultValue(true)
+      .withDescription("Whether to throw exception in the append write function.");
+
+  @AdvancedConfig
+  public static final ConfigOption<Boolean> INSTANT_REUSE_ENABLED = ConfigOptions
+      .key("append.write.instant.reuse.enabled")
+      .booleanType()
+      .defaultValue(true)
+      .withDescription("Whether to reuse instant in the append write function.");
+
   public static final ConfigOption<String> RECORD_KEY_FIELD = ConfigOptions
       .key(KeyGeneratorOptions.RECORDKEY_FIELD_NAME.key())
       .stringType()

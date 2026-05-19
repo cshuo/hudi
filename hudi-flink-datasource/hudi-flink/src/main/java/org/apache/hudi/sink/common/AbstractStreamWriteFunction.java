@@ -127,6 +127,8 @@ public abstract class AbstractStreamWriteFunction<I>
    */
   private transient boolean inputEnded;
 
+  protected transient long checkpointId;
+
   /**
    * Constructs a StreamWriteFunctionBase.
    *
@@ -155,6 +157,7 @@ public abstract class AbstractStreamWriteFunction<I>
     } else {
       sendBootstrapEvent();
     }
+    this.checkpointId = context.getRestoredCheckpointId().orElse(-1);
     // blocks flushing until the coordinator starts a new instant
     this.confirming = true;
   }
@@ -164,6 +167,7 @@ public abstract class AbstractStreamWriteFunction<I>
     if (inputEnded) {
       return;
     }
+    this.checkpointId = functionSnapshotContext.getCheckpointId();
     snapshotState();
     // Reload the snapshot state as the current state.
     reloadWriteMetaState();

@@ -19,6 +19,7 @@
 package org.apache.hudi.sink.append;
 
 import org.apache.hudi.client.WriteStatus;
+import org.apache.hudi.configuration.FlinkOptions;
 import org.apache.hudi.exception.HoodieException;
 import org.apache.hudi.sink.StreamWriteOperatorCoordinator;
 import org.apache.hudi.sink.bulk.BulkInsertWriterHelper;
@@ -86,6 +87,21 @@ public class AppendWriteFunction<I> extends AbstractStreamWriteFunction<I> {
     this.writerHelper.write((RowData) value);
   }
 
+  @Override
+  public void close() throws Exception {
+    try {
+      if (this.writerHelper != null) {
+        if (config.get(FlinkOptions.APPEND_WRITE_CLOSE_ENABLED)) {
+          this.writerHelper.close();
+        } else {
+          LOG.warn("not closing writer helper.");
+        }
+      }
+    } finally {
+      super.close();
+    }
+  }
+
   /**
    * End input action for batch source.
    */
@@ -97,7 +113,7 @@ public class AppendWriteFunction<I> extends AbstractStreamWriteFunction<I> {
 
   protected void sendBootstrapEvent() {
     int attemptId = getRuntimeContext().getAttemptNumber();
-    if (attemptId > 0) {
+    if (attemptId > 0 && config.get(FlinkOptions.INSTANT_REUSE_ENABLED)) {
       // either a partial or global failover, reuses the current inflight instant
       if (this.currentInstant != null && !metaClient.getActiveTimeline().filterCompletedInstants().containsInstant(currentInstant)) {
         LOG.info("Recover task[{}] for instant [{}] with attemptId [{}]", taskID, this.currentInstant, attemptId);
@@ -135,6 +151,9 @@ public class AppendWriteFunction<I> extends AbstractStreamWriteFunction<I> {
   private void flushData(boolean endInput) {
     final List<WriteStatus> writeStatus;
     if (this.writerHelper != null) {
+      if (config.get(FlinkOptions.THROW_EXCEPTION_ENABLED) && getRuntimeContext().getIndexOfThisSubtask() == 0 && this.checkpointId > 1) {
+        throw new RuntimeException("Artificial Exception");
+      }
       writeStatus = this.writerHelper.getWriteStatuses(this.taskID);
       this.currentInstant = this.writerHelper.getInstantTime();
     } else {
