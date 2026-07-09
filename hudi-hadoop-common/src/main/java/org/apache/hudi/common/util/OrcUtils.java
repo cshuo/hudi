@@ -23,6 +23,7 @@ import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieRecord.HoodieRecordType;
 import org.apache.hudi.common.schema.HoodieSchema;
+import org.apache.hudi.common.schema.HoodieSchemaField;
 import org.apache.hudi.common.schema.HoodieSchemaUtils;
 import org.apache.hudi.common.util.collection.ClosableIterator;
 import org.apache.hudi.common.util.collection.CloseableMappingIterator;
@@ -32,28 +33,43 @@ import org.apache.hudi.exception.HoodieIOException;
 import org.apache.hudi.exception.MetadataNotFoundException;
 import org.apache.hudi.hadoop.fs.HadoopFSUtils;
 import org.apache.hudi.io.hadoop.OrcReaderIterator;
+import org.apache.hudi.io.storage.hadoop.OrcColumnStatsMetadata;
 import org.apache.hudi.keygen.BaseKeyGenerator;
 import org.apache.hudi.metadata.HoodieIndexVersion;
 import org.apache.hudi.metadata.stats.HoodieColumnRangeMetadata;
+import org.apache.hudi.metadata.stats.ValueMetadata;
+import org.apache.hudi.metadata.stats.ValueType;
 import org.apache.hudi.storage.HoodieStorage;
 import org.apache.hudi.storage.StoragePath;
 
 import org.apache.avro.generic.GenericRecord;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.hive.common.type.HiveDecimal;
 import org.apache.hadoop.hive.ql.exec.vector.BytesColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
+import org.apache.orc.BooleanColumnStatistics;
+import org.apache.orc.ColumnStatistics;
+import org.apache.orc.DateColumnStatistics;
+import org.apache.orc.DecimalColumnStatistics;
+import org.apache.orc.DoubleColumnStatistics;
+import org.apache.orc.IntegerColumnStatistics;
 import org.apache.orc.OrcFile;
 import org.apache.orc.OrcProto.UserMetadataItem;
 import org.apache.orc.Reader;
 import org.apache.orc.Reader.Options;
 import org.apache.orc.RecordReader;
+import org.apache.orc.StringColumnStatistics;
+import org.apache.orc.TimestampColumnStatistics;
 import org.apache.orc.TypeDescription;
 import org.apache.orc.Writer;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.ByteBuffer;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -261,7 +277,169 @@ public class OrcUtils extends FileFormatUtils {
   @Override
   public List<HoodieColumnRangeMetadata<Comparable>> readColumnStatsFromMetadata(HoodieStorage storage, StoragePath filePath, List<String> columnList, HoodieIndexVersion indexVersion) {
     throw new UnsupportedOperationException(
-        "Reading column statistics from metadata is not supported for ORC format yet");
+        "Reading column statistics from an ORC file path is not supported yet; use the in-memory "
+            + "OrcColumnStatsMetadata overload produced by the ORC writer instead");
+  }
+
+  /**
+   * Builds column statistics from the in-memory ORC file format metadata captured by the writer,
+   * mirroring {@code ParquetUtils#readColumnStatsFromMetadata(ParquetMetadata, ...)}. This avoids
+   * re-reading the file: the file level {@link ColumnStatistics} are taken directly from the ORC
+   * writer.
+   *
+   * @param metadata     ORC file format metadata (statistics + schemas) captured after write.
+   * @param fileName     the file name to record on the resulting column range metadata.
+   * @param columnList   optional set of columns to restrict collection to; all columns when empty.
+   * @param indexVersion the column stats index version.
+   */
+  public List<HoodieColumnRangeMetadata<Comparable>> readColumnStatsFromMetadata(OrcColumnStatsMetadata metadata,
+                                                                                 String fileName,
+                                                                                 Option<List<String>> columnList,
+                                                                                 HoodieIndexVersion indexVersion) {
+    ColumnStatistics[] columnStatistics = metadata.getColumnStatistics();
+    TypeDescription orcSchema = metadata.getOrcSchema();
+    HoodieSchema schema = metadata.getSchema();
+    if (columnStatistics == null || columnStatistics.length == 0 || orcSchema.getCategory() != TypeDescription.Category.STRUCT) {
+      return Collections.emptyList();
+    }
+
+    // The root struct statistics carry the total number of rows written to the file.
+    long totalRows = columnStatistics[0].getNumberOfValues();
+    Set<String> columnsToMatch = columnList.map(cols -> (Set<String>) new HashSet<>(cols)).orElse(null);
+
+    List<TypeDescription> children = orcSchema.getChildren();
+    List<String> fieldNames = orcSchema.getFieldNames();
+    List<HoodieColumnRangeMetadata<Comparable>> result = new ArrayList<>();
+    for (int i = 0; i < children.size(); i++) {
+      String columnName = fieldNames.get(i);
+      if (columnsToMatch != null && !columnsToMatch.contains(columnName)) {
+        continue;
+      }
+      TypeDescription fieldType = children.get(i);
+      int columnId = fieldType.getId();
+      Option<HoodieSchemaField> fieldOpt = schema.getField(columnName);
+      if (columnId >= columnStatistics.length || !fieldOpt.isPresent()) {
+        continue;
+      }
+      HoodieSchema fieldSchema = fieldOpt.get().schema();
+      ValueMetadata valueMetadata;
+      try {
+        valueMetadata = ValueMetadata.getValueMetadata(fieldSchema, indexVersion);
+      } catch (IllegalArgumentException e) {
+        // Column has an unsupported (e.g. complex) type for the column stats index; skip it.
+        continue;
+      }
+      ColumnStatistics colStats = columnStatistics[columnId];
+      HoodieSchema valueSchema = fieldSchema.getNonNullType();
+      Comparable<?> minValue = convertOrcColumnStat(fieldType, colStats, valueSchema, valueMetadata.getValueType(), true);
+      Comparable<?> maxValue = convertOrcColumnStat(fieldType, colStats, valueSchema, valueMetadata.getValueType(), false);
+      long nullCount = totalRows - colStats.getNumberOfValues();
+      result.add((HoodieColumnRangeMetadata<Comparable>) HoodieColumnRangeMetadata.<Comparable>create(
+          fileName,
+          columnName,
+          (Comparable) valueMetadata.standardizeJavaTypeAndPromote(minValue),
+          (Comparable) valueMetadata.standardizeJavaTypeAndPromote(maxValue),
+          nullCount,
+          totalRows,
+          0L,
+          0L,
+          valueMetadata));
+    }
+    return result;
+  }
+
+  /**
+   * Converts an ORC {@link ColumnStatistics} min/max into a natural Java value that the column
+   * stats {@link ValueMetadata} can standardize. Returns {@code null} when the column has no values
+   * or the type has no meaningful min/max (e.g. binary/complex types).
+   */
+  private static Comparable<?> convertOrcColumnStat(TypeDescription fieldType,
+                                                    ColumnStatistics colStats,
+                                                    HoodieSchema valueSchema,
+                                                    ValueType valueType,
+                                                    boolean isMin) {
+    if (colStats.getNumberOfValues() == 0) {
+      return null;
+    }
+    switch (fieldType.getCategory()) {
+      case BOOLEAN: {
+        BooleanColumnStatistics stats = (BooleanColumnStatistics) colStats;
+        if (isMin) {
+          return stats.getFalseCount() > 0 ? Boolean.FALSE : Boolean.TRUE;
+        }
+        return stats.getTrueCount() > 0 ? Boolean.TRUE : Boolean.FALSE;
+      }
+      case BYTE:
+      case SHORT:
+      case INT: {
+        IntegerColumnStatistics stats = (IntegerColumnStatistics) colStats;
+        return (int) (isMin ? stats.getMinimum() : stats.getMaximum());
+      }
+      case LONG: {
+        IntegerColumnStatistics stats = (IntegerColumnStatistics) colStats;
+        return isMin ? stats.getMinimum() : stats.getMaximum();
+      }
+      case FLOAT: {
+        DoubleColumnStatistics stats = (DoubleColumnStatistics) colStats;
+        return (float) (isMin ? stats.getMinimum() : stats.getMaximum());
+      }
+      case DOUBLE: {
+        DoubleColumnStatistics stats = (DoubleColumnStatistics) colStats;
+        return isMin ? stats.getMinimum() : stats.getMaximum();
+      }
+      case STRING:
+      case CHAR:
+      case VARCHAR: {
+        StringColumnStatistics stats = (StringColumnStatistics) colStats;
+        return isMin ? stats.getMinimum() : stats.getMaximum();
+      }
+      case DATE: {
+        DateColumnStatistics stats = (DateColumnStatistics) colStats;
+        java.util.Date date = isMin ? stats.getMinimum() : stats.getMaximum();
+        if (date == null) {
+          return null;
+        }
+        // ORC returns a java.sql.Date built with the same (local) convention that #toLocalDate uses,
+        // which round-trips back to the original day.
+        return date instanceof java.sql.Date ? (java.sql.Date) date : new java.sql.Date(date.getTime());
+      }
+      case TIMESTAMP: {
+        TimestampColumnStatistics stats = (TimestampColumnStatistics) colStats;
+        // Use the non-UTC accessor so the min/max match the values Hudi's ORC reader surfaces:
+        // the reader reads TimestampColumnVector#time directly (writer-local millis), which
+        // round-trips the written logical value, whereas getMinimumUTC() would apply an extra
+        // timezone shift and break data skipping.
+        java.sql.Timestamp ts = isMin ? stats.getMinimum() : stats.getMaximum();
+        if (ts == null) {
+          return null;
+        }
+        switch (valueType) {
+          case LOCAL_TIMESTAMP_MILLIS:
+          case LOCAL_TIMESTAMP_MICROS:
+          case LOCAL_TIMESTAMP_NANOS:
+            return LocalDateTime.ofInstant(ts.toInstant(), ZoneOffset.UTC);
+          default:
+            return ts.toInstant();
+        }
+      }
+      case DECIMAL: {
+        DecimalColumnStatistics stats = (DecimalColumnStatistics) colStats;
+        HiveDecimal decimal = isMin ? stats.getMinimum() : stats.getMaximum();
+        if (decimal == null) {
+          return null;
+        }
+        BigDecimal bigDecimal = decimal.bigDecimalValue();
+        if (valueSchema instanceof HoodieSchema.Decimal) {
+          // HiveDecimal drops trailing zeros; enforce the schema scale so the value round-trips
+          // through the metadata table decimal encoding (which assumes the schema scale).
+          bigDecimal = bigDecimal.setScale(((HoodieSchema.Decimal) valueSchema).getScale());
+        }
+        return bigDecimal;
+      }
+      default:
+        // BINARY / complex types have no meaningful min/max for the column stats index.
+        return null;
+    }
   }
 
   @Override

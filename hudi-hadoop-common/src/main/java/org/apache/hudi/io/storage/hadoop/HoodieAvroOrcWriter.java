@@ -60,10 +60,14 @@ public class HoodieAvroOrcWriter implements HoodieAvroFileWriter, Closeable {
 
   private final long maxFileSize;
   private final HoodieSchema schema;
+  private final TypeDescription orcSchema;
   private final List<TypeDescription> fieldTypes;
   private final List<String> fieldNames;
   private final VectorizedRowBatch batch;
   private final Writer writer;
+  // File level column statistics captured before the underlying ORC writer is closed. Used to
+  // derive column stats for the metadata table, mirroring Parquet's file format metadata.
+  private OrcColumnStatsMetadata columnStatsMetadata;
 
   private final Path file;
   private final boolean isWrapperFileSystem;
@@ -88,7 +92,7 @@ public class HoodieAvroOrcWriter implements HoodieAvroFileWriter, Closeable {
     this.taskContextSupplier = taskContextSupplier;
 
     this.schema = schema;
-    final TypeDescription orcSchema = AvroOrcUtils.createOrcSchema(this.schema);
+    this.orcSchema = AvroOrcUtils.createOrcSchema(this.schema);
     this.fieldTypes = orcSchema.getChildren();
     this.fieldNames = orcSchema.getFieldNames();
     this.maxFileSize = config.getMaxFileSize();
@@ -183,5 +187,14 @@ public class HoodieAvroOrcWriter implements HoodieAvroFileWriter, Closeable {
     }
 
     writer.close();
+
+    // Closing flushes the final stripe into ORC's file-level statistics. Reading the statistics
+    // before close would omit any rows still buffered in that stripe.
+    this.columnStatsMetadata = new OrcColumnStatsMetadata(writer.getStatistics(), orcSchema, schema);
+  }
+
+  @Override
+  public Object getFileFormatMetadata() {
+    return columnStatsMetadata;
   }
 }

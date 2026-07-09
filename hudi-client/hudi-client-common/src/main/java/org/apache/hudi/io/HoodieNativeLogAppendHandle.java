@@ -29,17 +29,18 @@ import org.apache.hudi.common.table.log.block.HoodieLogBlock.HeaderMetadataType;
 import org.apache.hudi.common.util.HoodieRecordUtils;
 import org.apache.hudi.common.util.Lazy;
 import org.apache.hudi.common.util.Option;
+import org.apache.hudi.common.util.OrcUtils;
 import org.apache.hudi.common.util.ParquetUtils;
 import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.exception.HoodieAppendException;
 import org.apache.hudi.exception.HoodieException;
 import org.apache.hudi.io.cdc.HoodieNativeLogFormatWriter;
+import org.apache.hudi.io.storage.hadoop.OrcColumnStatsMetadata;
 import org.apache.hudi.metadata.HoodieIndexVersion;
 import org.apache.hudi.metadata.HoodieTableMetadataUtil;
 import org.apache.hudi.metadata.stats.HoodieColumnRangeMetadata;
 import org.apache.hudi.storage.StoragePath;
 import org.apache.hudi.table.HoodieTable;
-import org.apache.hudi.util.CommonClientUtils;
 
 import org.apache.parquet.hadoop.metadata.ParquetMetadata;
 
@@ -85,7 +86,6 @@ public class HoodieNativeLogAppendHandle<T, I, K, O> extends HoodieAppendHandle<
                                       TaskContextSupplier taskContextSupplier, boolean preserveMetadata,
                                       Map<HeaderMetadataType, String> header) {
     super(config, instantTime, hoodieTable, partitionPath, fileId, recordItr, taskContextSupplier, preserveMetadata);
-    CommonClientUtils.validateIndexSupportForNativeLogFormat(config, hoodieTable.getBaseFileFormat());
     this.header.putAll(header);
   }
 
@@ -263,6 +263,13 @@ public class HoodieNativeLogAppendHandle<T, I, K, O> extends HoodieAppendHandle<
     if (metadata instanceof ParquetMetadata) {
       return new ParquetUtils()
           .readColumnStatsFromMetadata((ParquetMetadata) metadata, filePath, Option.of(new ArrayList<>(columnsToIndexSet)), indexVersion)
+          .stream()
+          .filter(columnStats -> columnsToIndexSet.contains(columnStats.getColumnName()))
+          .collect(Collectors.toMap(HoodieColumnRangeMetadata::getColumnName, columnStats -> columnStats));
+    }
+    if (metadata instanceof OrcColumnStatsMetadata) {
+      return new OrcUtils()
+          .readColumnStatsFromMetadata((OrcColumnStatsMetadata) metadata, filePath, Option.of(new ArrayList<>(columnsToIndexSet)), indexVersion)
           .stream()
           .filter(columnStats -> columnsToIndexSet.contains(columnStats.getColumnName()))
           .collect(Collectors.toMap(HoodieColumnRangeMetadata::getColumnName, columnStats -> columnStats));
