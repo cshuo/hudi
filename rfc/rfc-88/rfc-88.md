@@ -123,7 +123,8 @@ lookups only. Everything else runs on each engine's own expression model:
 * Changing on-disk bytes. Parquet, ORC, Lance, HFile and Vortex files and Avro / HFile log blocks stay byte-for-byte the
   same.
 * Schema evolution semantics and field ids, owned by [RFC-104](https://github.com/apache/hudi/pull/18661).
-* The record merger API (RFC-101).
+* The record merger API (RFC-101). Payload-based and custom record merging still convert records to Avro; removing that
+  belongs to payload deprecation (RFC-97) and the merger API.
 * Replacing engine vectorized readers.
 
 ## Design
@@ -344,8 +345,9 @@ public interface VectorizedFileReader<B> extends Closeable {
 
 Parquet log blocks and native (v2) log files use `FileFormatIO` writers with an `OutputStream` target, as native logs
 already do through the factory today. Avro and HFile log blocks keep their Avro encoding on disk, but rows are encoded
-straight to Avro binary, so there is no `GenericRecord` per record. Merging stays in the FileGroupReader and its
-`RecordContext`.
+straight to Avro binary, so there is no `GenericRecord` per record. Reading them decodes straight into a `HoodieRow`,
+which engines see through their read view, instead of decoding to `IndexedRecord` and converting each record again.
+Merging stays in the FileGroupReader and its `RecordContext`.
 
 #### 2.5 Alternatives considered
 
