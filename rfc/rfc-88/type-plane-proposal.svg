@@ -283,8 +283,7 @@
     <text class="code-s" x="262" y="758">String toString();</text>
     <text class="code-s" x="262" y="774">static HoodieSchema parse(String j);</text>
     <text class="d" x="262" y="800">persisted form stays Avro JSON</text>
-    <text class="d" x="262" y="814">+ Hudi logical-type props until a</text>
-    <text class="d" x="262" y="828">table-version bump</text>
+    <text class="d" x="262" y="814">+ Hudi logical-type props</text>
   </g>
   <g class="node boundary core">
     <title>The only logical type system. Type systems and physical schemas are derived from it.</title>
@@ -434,8 +433,8 @@
   <text class="p" x="82" y="1584">Hudi-aware readers (Trino included) take columns from HoodieSchema; catalog</text>
   <text class="p" x="82" y="1598">types serve readers that do not understand Hudi.</text>
   <text class="pn" x="66" y="1614">7</text>
-  <text class="p" x="82" y="1614">Existing files are never rewritten; layouts old readers cannot read wait for a</text>
-  <text class="p" x="82" y="1628">table-version bump.</text>
+  <text class="p" x="82" y="1614">Data bytes do not change; existing files are never rewritten. Converging</text>
+  <text class="p" x="82" y="1628">adds labels only (INT(16) / INT(8) on every write path).</text>
 
   <g class="panel"><rect x="580" y="1386" width="490" height="250" rx="8"/></g>
   <text class="ph" x="596" y="1410">Conformance kit (shared tests)</text>

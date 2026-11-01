@@ -125,10 +125,9 @@ lookups only. Everything else runs on each engine's own expression model:
 
 ## Non-goals
 
-* Rewriting existing files. Every layout written today stays readable, and Avro / HFile log blocks keep their encoding.
-  Converging the mappers can change the layout of new files (for example one INT16 annotation for every engine); a
-  change that old readers can read (an annotation on the same physical type) ships with its step, anything else waits
-  for a table-version bump.
+* Changing data bytes or rewriting existing files. Avro / HFile log blocks keep their encoding. One Parquet label
+  changes: SMALLINT / TINYINT columns get `INT(16)` / `INT(8)` on every write path (today only Spark's row writer adds
+  it); readers that ignore the label read INT32 as before.
 * Replacing the persisted schema. It stays Avro JSON plus Hudi logical-type properties, read and written through
   `HoodieSchema.parse` / `toString` (RFC-99); the first version of this RFC proposed a new persisted format.
 * Schema evolution semantics and field ids, owned by [RFC-104](https://github.com/apache/hudi/pull/18661).
@@ -514,8 +513,7 @@ way, because the lookups are shared.
 1. **Mappers.** Add `TypeSupport`, the mapper interfaces and the registry, with implementations that wrap today's
    converters. No behaviour or on-disk change. Shared-test failures (INT16, UUID, DECIMAL, VECTOR) become the bug list.
 2. **Converge mappings.** Callers use the mappers; the duplicated converters are deleted; repair moves into the format
-   mappers; Trino takes its columns from `HoodieSchema`; the remaining RFC-99 types land. New-file layout changes follow
-   the compatibility rule in Non-goals.
+   mappers; Trino takes its columns from `HoodieSchema`; the remaining RFC-99 types land.
 3. **`HoodieRow` with its first format.** Add `HoodieRow`, the Spark, Flink and Avro wrappers and read views, and ORC
    through `OrcFileFormatIO` (write and read). Spark and Flink gain ORC; there is no engine ORC path to regress.
 4. **One format at a time.** Avro and HFile log blocks (inline log format), then Parquet behind a benchmark against
