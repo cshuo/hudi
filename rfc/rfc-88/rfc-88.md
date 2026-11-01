@@ -51,7 +51,7 @@ This RFC splits the problem in two:
 
 The data plane uses the type plane; the type plane depends on nothing in the data plane, so it can land first.
 
-![Overview: type plane and data plane](overview.png)
+![Overview: type plane and data plane](overview.svg)
 
 ## Background
 
