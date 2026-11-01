@@ -179,8 +179,8 @@
     <text class="t" x="62" y="282">SparkPropsRenderer</text>
     <text class="gen" x="62" y="300">CatalogSchemaRenderer&lt;Props&gt;</text>
     <text class="d" x="62" y="318">spark.sql.sources.schema.* table props;</text>
-    <text class="d" x="62" y="332">never overwrites an existing column</text>
-    <text class="d" x="62" y="346">replaces: SparkSchemaUtils</text>
+    <text class="d" x="62" y="332">replaces: SparkSchemaUtils,</text>
+    <text class="d" x="62" y="346">SparkDataSourceTableUtils</text>
     <text class="m" x="62" y="362">module: hudi-sync-common</text>
   </g>
   <text class="note" x="380" y="302">Flink and Trino need no renderer of their own: Trino takes its columns</text>
@@ -277,11 +277,11 @@
     <text class="d" x="62" y="806">parquet / HFile footers</text>
   </g>
   <g class="node boundary">
-    <title>Serializes HoodieSchema for every persisted copy. Persisted form unchanged.</title>
+    <title>Parses and prints HoodieSchema for every persisted copy (RFC-99 API). Persisted form unchanged.</title>
     <rect x="250" y="714" width="290" height="150" rx="8"/>
-    <text class="t" x="262" y="736">HoodieSchemaSerDe</text>
-    <text class="code-s" x="262" y="758">String toJson(HoodieSchema s);</text>
-    <text class="code-s" x="262" y="774">HoodieSchema fromJson(String j);</text>
+    <text class="t" x="262" y="736">Persisted form</text>
+    <text class="code-s" x="262" y="758">String toString();</text>
+    <text class="code-s" x="262" y="774">static HoodieSchema parse(String j);</text>
     <text class="d" x="262" y="800">persisted form stays Avro JSON</text>
     <text class="d" x="262" y="814">+ Hudi logical-type props until a</text>
     <text class="d" x="262" y="828">table-version bump</text>
@@ -391,7 +391,7 @@
   <g class="persist"><rect x="140" y="1286" width="120" height="28" rx="6"/></g>
   <text class="chip" x="200" y="1304">commit metadata</text>
   <line class="edge" x1="260" y1="1300" x2="440" y2="1300" marker-end="url(#arr)"/>
-  <text class="lbl lbl-code" x="350" y="1294" text-anchor="middle">HoodieSchemaSerDe.fromJson</text>
+  <text class="lbl lbl-code" x="350" y="1294" text-anchor="middle">HoodieSchema.parse</text>
   <g class="boundary"><rect x="440" y="1286" width="110" height="28" rx="6"/></g>
   <text class="chip" x="495" y="1304">HoodieSchema</text>
   <line class="edge" x1="550" y1="1300" x2="790" y2="1300" marker-end="url(#arr)"/>
@@ -434,7 +434,7 @@
   <text class="p" x="82" y="1584">Hudi-aware readers (Trino included) take columns from HoodieSchema; catalog</text>
   <text class="p" x="82" y="1598">types serve readers that do not understand Hudi.</text>
   <text class="pn" x="66" y="1614">7</text>
-  <text class="p" x="82" y="1614">No on-disk change in step 1; layout fixes found by the kit land behind a</text>
+  <text class="p" x="82" y="1614">Existing files are never rewritten; layouts old readers cannot read wait for a</text>
   <text class="p" x="82" y="1628">table-version bump.</text>
 
   <g class="panel"><rect x="580" y="1386" width="490" height="250" rx="8"/></g>

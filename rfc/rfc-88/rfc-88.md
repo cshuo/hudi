@@ -68,9 +68,10 @@ formats, and the copies disagree:
   `HiveSchemaUtils`. Trino builds its column types from the Hive type strings in the metastore rather than from
   `HoodieSchema`.
 * **No loss is declared anywhere.** Examples, all on master:
-  * Flink TINYINT / SMALLINT and Spark `ByteType` / `ShortType` map to `HoodieSchemaType.INT`, while Flink's Parquet
-    writer annotates `INT(8)` / `INT(16)`. The width is lost and the physical layout depends on the writer. RFC-99's
-    mapping table says SMALLINT is `INT32 + INTEGER(16)`.
+  * Flink TINYINT / SMALLINT and Spark `ByteType` / `ShortType` map to `HoodieSchemaType.INT`. Flink's Parquet writer
+    derives its schema from `HoodieSchema`, so it writes plain INT32; Spark's row writer derives it from `StructType`, so
+    it annotates `ShortType` as `INT(16)` and throws on `ByteType`. The width is lost and the physical layout depends on
+    the writer. RFC-99's mapping table says SMALLINT is `INT32 + INTEGER(16)`.
   * UUID is declared `binary` by Hive sync and `STRING` by BigQuery sync.
   * BigQuery sync maps every DECIMAL to `NUMERIC`, which holds at most scale 9.
   * Hive sync stores VECTOR as `binary`.
@@ -84,14 +85,18 @@ dedicated class, a detour through Avro, or missing:
 
 | Engine | Parquet | ORC | Lance | HFile | Avro log block |
 |---|---|---|---|---|---|
-| Spark | `HoodieSparkParquetWriter` | via Avro | `HoodieSparkLanceWriter` | via `toIndexedRecord` | via `toIndexedRecord` |
-| Flink | `HoodieRowDataParquetWriter` | not supported | `HoodieRowDataLanceWriter` | via Avro | via `toIndexedRecord` |
+| Spark | `HoodieSparkParquetWriter` | via Avro (AVRO record type only) | `HoodieSparkLanceWriter` | via `toIndexedRecord` (AVRO record type only) | row converted to Avro (`getAvroBytes`) |
+| Flink | `HoodieRowDataParquetWriter` | not supported | `HoodieRowDataLanceWriter` | via Avro | row converted to Avro (`getAvroBytes`) |
 | Avro / Java | `HoodieAvroParquetWriter` | `HoodieAvroOrcWriter` | not supported | `HoodieAvroHFileWriter` | `GenericDatumWriter` |
 
 Factories pick writers by record type x file format, so every gap is a runtime exception. On the read side, Flink's
 vectorized Parquet reader is copied once per Flink version, Trino merges file groups in Avro (`HudiAvroSerializer`), and
 Hive's Avro-based readers convert each record to `ArrayWritable`. Per-record Avro conversion therefore remains on hot
-paths even after RFC-46 and RFC-84: Avro and HFile log blocks, Trino and Hive reads.
+paths even after RFC-46 and RFC-84: Spark's default AVRO record type (rows become Avro before any writer, owned by RFC-115
+and the merger API), Avro and HFile log blocks, Trino and Hive reads.
+
+Avro data blocks are the default log block only for the inline log format (write version below 10). From version 10,
+the default, log files are native base-format files written through the same factory as base files.
 
 ![Today: file writers and readers per engine](writer-reader-today.svg)
 
@@ -120,8 +125,12 @@ lookups only. Everything else runs on each engine's own expression model:
 
 ## Non-goals
 
-* Changing on-disk bytes. Parquet, ORC, Lance, HFile and Vortex files and Avro / HFile log blocks stay byte-for-byte the
-  same.
+* Rewriting existing files. Every layout written today stays readable, and Avro / HFile log blocks keep their encoding.
+  Converging the mappers can change the layout of new files (for example one INT16 annotation for every engine); a
+  change that old readers can read (an annotation on the same physical type) ships with its step, anything else waits
+  for a table-version bump.
+* Replacing the persisted schema. It stays Avro JSON plus Hudi logical-type properties, read and written through
+  `HoodieSchema.parse` / `toString` (RFC-99); the first version of this RFC proposed a new persisted format.
 * Schema evolution semantics and field ids, owned by [RFC-104](https://github.com/apache/hudi/pull/18661).
 * The record merger API (RFC-101). Payload-based and custom record merging still convert records to Avro; removing that
   belongs to payload deprecation (RFC-97) and the merger API.
@@ -194,7 +203,7 @@ Implementations, and what each replaces:
 | | `AvroSchemaMapper` | `HoodieSchema.toAvroSchema()` |
 | | `OrcSchemaMapper` | `AvroOrcUtils` |
 | `CatalogSchemaRenderer` | `HiveCatalogRenderer` (HMS, Glue, ADB, Flink `HoodieHiveCatalog`) | `HiveSchemaUtil`, the HMS schema diff |
-| | `SparkPropsRenderer` | `SparkSchemaUtils` (`spark.sql.sources.schema.*`) |
+| | `SparkPropsRenderer` | `SparkSchemaUtils` (schema JSON) and `SparkDataSourceTableUtils` (`spark.sql.sources.schema.*` properties) |
 | | `BigQueryRenderer` | the table part of `BigQuerySchemaResolver` |
 
 Mappers are discovered with `ServiceLoader` through a `SchemaMappers` registry, so engine and sync modules plug in
@@ -224,8 +233,8 @@ public interface HoodieRow {
   int getFieldCount();
   boolean isNullAt(int i);
   boolean getBoolean(int i);
-  int getInt(int i);                         // INT8, INT16, INT32
-  long getLong(int i);
+  int getInt(int i);                         // INT8, INT16, INT32, TIME(millis)
+  long getLong(int i);                       // INT64, TIME(micros)
   float getFloat(int i);
   double getDouble(int i);
   byte[] getBinary(int i);                   // STRING as UTF-8, BINARY, FIXED, UUID
@@ -238,8 +247,9 @@ public interface HoodieRow {
 }
 ```
 
-Each engine provides one wrapper per direction. Wrappers are reused across rows (`replace(row)`), and conversions happen
-once per logical type inside them:
+Each engine provides one wrapper per direction. Wrappers are reused across rows (`replace(row)`, as Paimon's
+`FlinkRowData` does), and conversions happen once per logical type inside them. Read views do not copy values; `copy()`
+materializes a row when the engine buffers it:
 
 ```java
 /** Write: an engine row seen as a HoodieRow. */
@@ -325,11 +335,13 @@ Readers mirror this: a format's struct reader fills a `HoodieRow` from the file 
 | `LanceFileFormatIO` | `HoodieSparkLanceWriter`, `HoodieRowDataLanceWriter` and both Lance readers |
 | `OrcFileFormatIO` | `HoodieAvroOrcWriter` / `HoodieAvroOrcReader`; Spark and Flink can now write ORC |
 | `HFileFormatIO` | `HoodieAvroHFileWriter` and the HFile readers; values stay Avro binary, encoded from rows |
-| `AvroBinaryFormatIO` | Avro data blocks: rows encoded straight to Avro binary instead of `toIndexedRecord` + `GenericDatumWriter` |
-| `VortexFileFormatIO` | `HoodieSparkVortexWriter` / `HoodieSparkVortexReader` |
+| `AvroBinaryFormatIO` | Avro data blocks: rows encoded straight to Avro binary instead of converting each row to an Avro record (`getAvroBytes`) |
+| `VortexFileFormatIO` | `HoodieSparkVortexWriter` / `HoodieSparkVortexReader`; available to every engine in JDK 17 builds, as Vortex is today |
+| `ArrowRowWriter` (shared by Lance and Vortex) | lance-spark's `LanceArrowWriter`, Spark's `ArrowWriter`, Flink's `LanceRowDataWriter`: fills an Arrow `VectorSchemaRoot` from `HoodieRow` |
 
 A `FileFormats` registry keyed by `HoodieFileFormat` alone replaces `HoodieIOFactory`, which keys on record type x file
-format. A missing combination becomes a missing implementation rather than a runtime exception.
+format. `HoodieFileFormat` gains an `AVRO` member for Avro data blocks; Parquet and HFile data blocks already hold
+Parquet and HFile bytes. A missing combination becomes a missing implementation rather than a runtime exception.
 
 #### 2.3 Engine fast paths
 
@@ -361,14 +373,19 @@ Merging stays in the FileGroupReader and its `RecordContext`.
   background is what that shape produces in Hudi.
 * **Delta Kernel's engine handlers**: the engine reads and writes files with its own code. Adopted only for the
   vectorized fast paths above.
+* **Keep each engine's own writers and remove only the Avro step** (vinothchandar's review of the first version: a Flink
+  Parquet writer should write `RowData` without conversions). This is today's shape minus Avro; it keeps one writer per
+  engine x format and the drift listed in the background. The copy a wrapper makes is the one engine writers already
+  make (2.1).
 
 ### 3. HoodieRecord and KeyGenerator
 
 Engine-specific `HoodieRecord` implementations keep engine rows on the write path (RFC-46). Spark, Hive and Flink
 (`HoodieFlinkRecord`) now have them.
 
-The key generator is still tightly coupled with Avro `GenericRecord`. A key generator over engine rows replaces it, and
-each engine integration can customize its implementation:
+The base `KeyGenerator.getKey` takes an Avro `GenericRecord`; Spark (`SparkKeyGeneratorInterface`, over `InternalRow`)
+and Flink (`RowDataKeyGen`, over `RowData`) each added their own row-based variant beside it. One generic interface
+replaces the three:
 
 ```java
 public interface KeyGenerator<R> extends Serializable {
@@ -380,7 +397,8 @@ public interface KeyGenerator<R> extends Serializable {
 ```
 
 With `HoodieRow` in place, a key generator can also be written once against `HoodieRow` and serve every engine through
-the write wrappers; that is a follow-up.
+the write wrappers; that is a follow-up. Key fields defined as functions of columns (the `Expression` operators in 4.1)
+build on the same follow-up.
 
 ### 4. Expressions
 
@@ -439,8 +457,9 @@ public interface ExpressionRenderer<T> {
 
 Rules:
 
-1. Translation and rendering are conservative: the result keeps every row the original keeps. An untranslatable AND
-   conjunct is dropped; an untranslatable OR or NOT branch drops the whole branch.
+1. Translation and rendering are conservative: the result keeps every row the original keeps. NOT is first pushed down
+   to the leaves; then an untranslatable AND conjunct is dropped, an OR with an untranslatable side is dropped whole, and
+   a NOT over an untranslatable leaf is dropped.
 2. A cast is stripped only if it preserves order; otherwise the predicate is dropped.
 3. `support()` declares what each system translates; unsupported shapes are dropped, not guessed.
 
@@ -462,13 +481,13 @@ skipping goes through one planner:
 
 ```java
 public interface IndexPlanner {
-  List<IndexLookup> plan(Expression filter, HoodieSchema schema, Set<MetadataPartitionType> available);
+  List<IndexLookup> plan(Expression filter, HoodieSchema schema, Set<MetadataPartitionType> available);   // order overridable per engine
 }
 
 /** One per index type: column stats, partition stats, expression index, record index, bloom filters, secondary index. */
 public interface IndexLookup {
   MetadataPartitionType index();
-  CandidateFiles lookup(Expression filter, HoodieTableMetadata mdt, StatsEvaluator eval);
+  CandidateFiles lookup(Expression filter, HoodieTableMetadata mdt, StatsEvaluator eval, HoodieEngineContext ctx);   // ctx distributes key probes
 }
 
 /** How stats-based lookups evaluate the filter. */
@@ -495,13 +514,16 @@ way, because the lookups are shared.
 1. **Mappers.** Add `TypeSupport`, the mapper interfaces and the registry, with implementations that wrap today's
    converters. No behaviour or on-disk change. Shared-test failures (INT16, UUID, DECIMAL, VECTOR) become the bug list.
 2. **Converge mappings.** Callers use the mappers; the duplicated converters are deleted; repair moves into the format
-   mappers; Trino takes its columns from `HoodieSchema`; the remaining RFC-99 types land.
-3. **`HoodieRow` with its first format.** Add `HoodieRow` and the Spark, Flink and Avro wrappers, and move Avro log blocks
-   onto `AvroBinaryFormatIO`: no `GenericRecord` per record, same bytes on disk.
-4. **One format at a time.** ORC (gains Spark and Flink writes), then Parquet behind a benchmark against today's writers,
-   then Lance, HFile and Vortex. Old writers stay until their replacement lands.
-5. **Readers**, row readers first; engine vectorized readers move behind `VectorizedFileReader` without being rewritten.
-6. **Expressions.** Translators and renderers, then the index planner and lookups; Hive gains data skipping.
+   mappers; Trino takes its columns from `HoodieSchema`; the remaining RFC-99 types land. New-file layout changes follow
+   the compatibility rule in Non-goals.
+3. **`HoodieRow` with its first format.** Add `HoodieRow`, the Spark, Flink and Avro wrappers and read views, and ORC
+   through `OrcFileFormatIO` (write and read). Spark and Flink gain ORC; there is no engine ORC path to regress.
+4. **One format at a time.** Avro and HFile log blocks (inline log format), then Parquet behind a benchmark against
+   today's writers and readers (base files and native logs, the default path), then Lance and Vortex. Old writers and
+   readers stay until their replacement lands; engine vectorized readers move behind `VectorizedFileReader` without being
+   rewritten.
+5. **Expressions**, independent of steps 3 and 4. Translators and renderers, then the index planner and lookups; Hive
+   gains data skipping.
 
 Each step ships on its own. No migration is needed for existing tables.
 

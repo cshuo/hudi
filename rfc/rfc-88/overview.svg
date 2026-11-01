@@ -119,7 +119,7 @@
 <g class="pill-r88"><rect x="1073" y="332" width="54" height="16" rx="8"/><text x="1100" y="344">RFC-88</text></g>
 <g class="node persist"><rect class="box" x="690" y="430" width="240" height="60" rx="8"/><text class="t" x="702" y="450">Persisted copies</text><text class="d" x="702" y="468">commit metadata, log headers, configs</text></g>
 <path class="edge" d="M810,386 L810,430" marker-start="url(#arr)" marker-end="url(#arr)"/>
-<text class="lbl" x="818" y="412">HoodieSchemaSerDe</text>
+<text class="lbl" x="818" y="412">HoodieSchema.parse / toString</text>
 <g class="pill-r88"><rect x="860" y="422" width="54" height="16" rx="8"/><text x="887" y="434">RFC-99</text></g>
 <g class="panel"><rect x="50" y="400" width="560" height="104" rx="8"/></g>
 <text class="pn" x="66" y="422">Rules</text>
@@ -128,7 +128,7 @@
 <text class="p" x="66" y="478">3  One shared test kit for every mapper; a new type or system is added once.</text>
 <g class="panel"><rect x="1010" y="400" width="560" height="104" rx="8"/></g>
 <text class="pn" x="1026" y="422">Ownership</text>
-<text class="p" x="1026" y="440">RFC-99: the hub (HoodieSchema, type set, interoperability table as spec, SerDe).</text>
+<text class="p" x="1026" y="440">RFC-99: the hub (HoodieSchema, type set, interoperability table as spec, persisted form).</text>
 <text class="p" x="1026" y="456">RFC-88, restructured: the spokes (mappers, TypeSupport, catalog renderers, test kit).</text>
 <text class="p" x="1026" y="472">RFC-104: field ids and SchemaTransformPlan (schema-on-read evolution).</text>
 <path class="edge" d="M810,566 L810,512" marker-end="url(#arr)"/>

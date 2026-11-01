@@ -134,7 +134,7 @@
     <title>HoodieSchema: Hudi's schema API, used in ~360 non-test files. Each HoodieSchemaType maps to an Avro Schema.Type.</title>
     <rect x="220" y="236" width="1350" height="40" rx="8"/>
     <text class="t" x="580" y="261">HoodieSchema</text>
-    <text class="d" x="692" y="261">~360 main files; every HoodieSchemaType maps to an Avro Schema.Type underneath</text>
+    <text class="d" x="692" y="261">~460 main files; every HoodieSchemaType maps to an Avro Schema.Type underneath</text>
   </g>
 
   <!-- ===== Column 1: Spark ===== -->
@@ -161,7 +161,7 @@
   <path class="edge bypass" d="M452,188 L452,428 L440,428" marker-end="url(#arr)"/>
   <path class="edge bypass" d="M472,188 L472,498 L440,498" marker-end="url(#arr)"/>
   <g class="node format">
-    <title>Spark row writer derives the Parquet MessageType from StructType; HoodieSchema is only consulted for timestamp precision and variant shredding.</title>
+    <title>Spark row writer derives the Parquet MessageType from StructType; HoodieSchema supplies timestamp precision, decimal width, VECTOR and VARIANT.</title>
     <rect x="240" y="406" width="200" height="46" rx="8"/>
     <text class="t" x="252" y="425">Parquet MessageType</text>
     <text class="c" x="252" y="442">HoodieRowParquetWriteSupport</text>
@@ -220,7 +220,7 @@
   </g>
   <line class="edge" x1="1090" y1="236" x2="1090" y2="188" marker-end="url(#arr)"/>
   <text class="lbl" x="1098" y="208">TableSchemaResolver</text>
-  <text class="lbl-s" x="1098" y="222">FileGroupReader merge only</text>
+  <text class="lbl-s" x="1098" y="222">reads and merges</text>
   <!-- HMS -> Trino (skips HoodieSchema) -->
   <line class="edge bypass" x1="1255" y1="640" x2="1255" y2="188" marker-end="url(#arr)"/>
   <text class="lbl" x="1247" y="440" text-anchor="end">HiveTypeTranslator</text>
@@ -309,7 +309,7 @@
   <text class="note" x="846" y="802">schema-on-read is enabled.</text>
   <g class="badge"><circle cx="830" cy="828" r="9"/><text x="830" y="832">5</text></g>
   <text class="note" x="846" y="832">Trino column types come from Hive type strings that Hive sync wrote, not from HoodieSchema.</text>
-  <text class="note" x="846" y="848">HoodieSchema only reaches Trino inside the FileGroupReader merge.</text>
+  <text class="note" x="846" y="848">Trino reads and merges build their schema from HoodieSchema.</text>
   <g class="badge"><circle cx="830" cy="874" r="9"/><text x="830" y="878">6</text></g>
   <text class="note" x="846" y="878">Spark alone has four schema paths: two converter stacks (to HoodieSchema and to InternalSchema)</text>
   <text class="note" x="846" y="894">and two direct StructType paths to Parquet and Arrow (dashed).</text>
