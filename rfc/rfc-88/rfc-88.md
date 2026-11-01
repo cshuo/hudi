@@ -75,6 +75,8 @@ formats, and the copies disagree:
   * BigQuery sync maps every DECIMAL to `NUMERIC`, which holds at most scale 9.
   * Hive sync stores VECTOR as `binary`.
 
+![Today: schema conversions per engine](type-plane-today.svg)
+
 ### Rows take detours through Avro, and readers and writers exist per engine x format
 
 On write Hudi receives an engine row (`InternalRow`, `RowData`, `IndexedRecord`). Each engine x format pair is either a
@@ -91,6 +93,8 @@ vectorized Parquet reader is copied once per Flink version, Trino merges file gr
 Hive's Avro-based readers convert each record to `ArrayWritable`. Per-record Avro conversion therefore remains on hot
 paths even after RFC-46 and RFC-84: Avro and HFile log blocks, Trino and Hive reads.
 
+![Today: file writers and readers per engine](writer-reader-today.svg)
+
 ### Expressions are translated per engine
 
 Hudi's `Expression` (in `hudi-common`) is used by Spark partition pruning, Hive / Glue sync filters and metadata-table key
@@ -103,6 +107,8 @@ lookups only. Everything else runs on each engine's own expression model:
   skipping.
 * Literal typing differs: `SparkFilterHelper` maps Spark types to `InternalSchema` types (a `LocalDate` literal is typed
   as a timestamp holding epoch days), Flink switches on `LogicalTypeRoot`, Trino builds `Domain`s.
+
+![Today: expression and filter pushdown per engine](expression-today.svg)
 
 ## Goals
 
@@ -130,6 +136,8 @@ lookups only. Everything else runs on each engine's own expression model:
 | Field ids, schema evolution | RFC-104 |
 
 ### 1. Type plane: mapping `HoodieSchema` to every boundary
+
+![Proposed: type plane](type-plane-proposal.svg)
 
 Every mapper converts between `HoodieSchema` and exactly one other type system. Rules:
 
@@ -197,6 +205,8 @@ in the shared tests. A type is not done until every mapper declares it. Each new
 the Avro JSON schema (a logical-type property old readers ignore) so older readers degrade to the base type.
 
 ### 2. Reader / writer
+
+![Proposed: file reader and writer interfaces](writer-reader-proposal.svg)
 
 #### 2.1 One row type for formats, wrapped by engines
 
@@ -369,6 +379,8 @@ With `HoodieRow` in place, a key generator can also be written once against `Hoo
 the write wrappers; that is a follow-up.
 
 ### 4. Expressions
+
+![Proposed: expression interfaces](expression-proposal.svg)
 
 #### 4.1 Expression
 
