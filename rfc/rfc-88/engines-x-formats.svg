@@ -1,0 +1,217 @@
+<!--
+  Licensed to the Apache Software Foundation (ASF) under one or more
+  contributor license agreements.  See the NOTICE file distributed with
+  this work for additional information regarding copyright ownership.
+  The ASF licenses this file to You under the Apache License, Version 2.0
+  (the "License"); you may not use this file except in compliance with
+  the License.  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1620 872" width="1620" height="872" class="viz-root" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+<title>Engines x formats: N x M classes, or N + M through one row type</title>
+<style>
+    .viz-root { color-scheme: light; --surface-1: #fcfcfb; --lane: #0b0b0b; --text-primary: #0b0b0b;
+      --text-secondary: #52514e; --text-muted: #8a8984; --boundary: #2a78d6; --engine: #eb6834;
+      --format: #1baf7a; --persist: #8a8984; --persist-fill: #f0efec; }
+    @media (prefers-color-scheme: dark) {
+      .viz-root { color-scheme: dark; --surface-1: #1a1a19; --lane: #f0efec; --text-primary: #f0efec;
+        --text-secondary: #c3c2b7; --text-muted: #8a8984; --boundary: #3987e5; --engine: #d95926;
+        --format: #199e70; --persist: #8a8984; --persist-fill: #383835; }
+    }
+    .bg { fill: var(--surface-1); }
+    .h1 { fill: var(--text-primary); font-size: 20px; font-weight: 700; }
+    .sub { fill: var(--text-secondary); font-size: 12.5px; }
+    .legend { fill: var(--text-secondary); font-size: 12px; }
+    .lane { fill: var(--lane); fill-opacity: 0.035; }
+    .sep { stroke: var(--text-muted); stroke-opacity: 0.35; stroke-width: 1; }
+    .row-label { fill: var(--text-muted); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; }
+    .row-sub { fill: var(--text-muted); font-size: 11px; }
+    .col-h { fill: var(--text-primary); font-size: 14px; font-weight: 700; text-anchor: middle; }
+    .sec rect { fill: var(--lane); fill-opacity: 0.06; }
+    .sec text { fill: var(--text-primary); font-size: 13.5px; font-weight: 700; }
+    .boundary rect.box { fill: var(--boundary); fill-opacity: 0.12; stroke: var(--boundary); stroke-width: 2; }
+    .engine rect.box { fill: var(--engine); fill-opacity: 0.12; stroke: var(--engine); stroke-width: 2; }
+    .format rect.box { fill: var(--format); fill-opacity: 0.12; stroke: var(--format); stroke-width: 2; }
+    .persist rect.box { fill: var(--persist-fill); stroke: var(--persist); stroke-width: 2; stroke-dasharray: 5 3; }
+    .group rect.box { fill: var(--lane); fill-opacity: 0.035; stroke: var(--text-muted); stroke-width: 1.5; }
+    .thick rect.box { stroke-width: 3; }
+    .node:hover rect.box { fill-opacity: 0.24; }
+    .t { fill: var(--text-primary); font-size: 12.5px; font-weight: 700; }
+    .tc { fill: var(--text-primary); font-size: 12px; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .d { fill: var(--text-secondary); font-size: 11px; }
+    .c { fill: var(--text-secondary); font-size: 10.5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .code, .cmt, .c, .d { white-space: pre; }
+    .code { fill: var(--text-primary); font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .cmt { fill: var(--text-muted); font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .m { fill: var(--text-muted); font-size: 11px; }
+    .dh { fill: var(--text-secondary); font-size: 11px; paint-order: stroke; stroke: var(--surface-1); stroke-width: 5px; stroke-linejoin: round; }
+    .mh { fill: var(--text-muted); font-size: 11px; paint-order: stroke; stroke: var(--surface-1); stroke-width: 5px; stroke-linejoin: round; }
+    .th { fill: var(--text-primary); font-size: 12.5px; font-weight: 700; paint-order: stroke; stroke: var(--surface-1); stroke-width: 5px; stroke-linejoin: round; }
+    .tag { fill: var(--text-muted); font-size: 10.5px; text-anchor: end; }
+    .edge { stroke: var(--text-secondary); stroke-width: 1.5; fill: none; }
+    .bypass { stroke-dasharray: 6 4; }
+    .real { stroke: var(--text-secondary); stroke-width: 1.5; fill: none; stroke-dasharray: 6 4; }
+    .arrow { fill: var(--text-secondary); }
+    .tri { fill: var(--surface-1); stroke: var(--text-secondary); stroke-width: 1.2; }
+    .lbl { fill: var(--text-secondary); font-size: 10.5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; paint-order: stroke; stroke: var(--surface-1); stroke-width: 4px; stroke-linejoin: round; }
+    .lbl-s { fill: var(--text-secondary); font-size: 11px; paint-order: stroke; stroke: var(--surface-1); stroke-width: 4px; stroke-linejoin: round; }
+    .badge circle { fill: var(--text-primary); }
+    .badge text { fill: var(--surface-1); font-size: 11px; font-weight: 700; text-anchor: middle; }
+    .pill-r88 rect { fill: var(--text-primary); }
+    .pill-r88 text { fill: var(--surface-1); font-size: 10px; font-weight: 700; text-anchor: middle; }
+    .pill-offer rect { fill: var(--surface-1); stroke: var(--text-primary); stroke-width: 1.2; stroke-dasharray: 3 2; }
+    .pill-offer text { fill: var(--text-primary); font-size: 10px; font-weight: 700; text-anchor: middle; }
+    .hook rect { fill: var(--surface-1); stroke: var(--boundary); stroke-width: 1.8; }
+    .hook text { fill: var(--boundary); font-size: 10px; font-weight: 700; text-anchor: middle; }
+    .panel rect { fill: var(--lane); fill-opacity: 0.035; stroke: var(--text-muted); stroke-width: 1; }
+    .ph { fill: var(--text-primary); font-size: 13.5px; font-weight: 700; }
+    .p { fill: var(--text-secondary); font-size: 11.5px; }
+    .pn { fill: var(--text-primary); font-size: 11.5px; font-weight: 700; }
+    .note { fill: var(--text-secondary); font-size: 12px; }
+    .note-h { fill: var(--text-primary); font-size: 13.5px; font-weight: 700; }
+    .chip { font-size: 11px; fill: var(--text-primary); text-anchor: middle; }
+    .flow-h { fill: var(--text-primary); font-size: 11.5px; font-weight: 700; }
+</style>
+<defs>
+<marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrow"/></marker>
+<marker id="tri" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto"><path d="M1,1 L11,6 L1,11 z" class="tri"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1620" height="872"/>
+<text class="h1" x="50" y="36">Engines x formats: N x M classes, or N + M through one row type</text>
+<text class="sub" x="50" y="58">Writers shown; readers have the same shape. 3 writing engines (Spark, Flink, Avro / Java client) and 5 formats (Parquet, ORC, Lance, HFile, Avro log block).</text>
+<rect x="50" y="76" width="14" height="14" rx="3" fill="var(--engine)" fill-opacity="0.12" stroke="var(--engine)" stroke-width="2"/>
+<text class="legend" x="70" y="87">Engine-specific</text>
+<rect x="195" y="76" width="14" height="14" rx="3" fill="var(--format)" fill-opacity="0.12" stroke="var(--format)" stroke-width="2"/>
+<text class="legend" x="215" y="87">Format-specific</text>
+<rect x="340" y="76" width="14" height="14" rx="3" fill="var(--boundary)" fill-opacity="0.12" stroke="var(--boundary)" stroke-width="2"/>
+<text class="legend" x="360" y="87">Shared row type (hudi-common)</text>
+<g class="sec"><rect x="50" y="108" width="750" height="32" rx="8"/><text x="66" y="129">Per engine x format: N x M = 15 classes</text></g>
+<text class="tag" x="784" y="129">RFC-88's first sketch; Iceberg's FormatModel</text>
+<text class="col-h" x="221.0" y="184">Parquet</text>
+<text class="col-h" x="349.0" y="184">ORC</text>
+<text class="col-h" x="477.0" y="184">Lance</text>
+<text class="col-h" x="605.0" y="184">HFile</text>
+<text class="col-h" x="733.0" y="184">Avro log block</text>
+<text class="pn" x="66" y="227">Spark</text>
+<g class="node engine"><rect class="box" x="160" y="196" width="122" height="52" rx="8"/><text class="t" x="172" y="216"></text></g>
+<text class="c" x="170" y="218">SparkParquet</text>
+<text class="c" x="170" y="234">StructWriter</text>
+<g class="node engine"><rect class="box" x="288" y="196" width="122" height="52" rx="8"/><text class="t" x="300" y="216"></text></g>
+<text class="c" x="298" y="218">SparkOrc</text>
+<text class="c" x="298" y="234">StructWriter</text>
+<g class="node engine"><rect class="box" x="416" y="196" width="122" height="52" rx="8"/><text class="t" x="428" y="216"></text></g>
+<text class="c" x="426" y="218">SparkLance</text>
+<text class="c" x="426" y="234">StructWriter</text>
+<g class="node engine"><rect class="box" x="544" y="196" width="122" height="52" rx="8"/><text class="t" x="556" y="216"></text></g>
+<text class="c" x="554" y="218">SparkHFile</text>
+<text class="c" x="554" y="234">StructWriter</text>
+<g class="node engine"><rect class="box" x="672" y="196" width="122" height="52" rx="8"/><text class="t" x="684" y="216"></text></g>
+<text class="c" x="682" y="218">SparkAvroBlock</text>
+<text class="c" x="682" y="234">StructWriter</text>
+<text class="pn" x="66" y="285">Flink</text>
+<g class="node engine"><rect class="box" x="160" y="254" width="122" height="52" rx="8"/><text class="t" x="172" y="274"></text></g>
+<text class="c" x="170" y="276">FlinkParquet</text>
+<text class="c" x="170" y="292">StructWriter</text>
+<g class="node engine"><rect class="box" x="288" y="254" width="122" height="52" rx="8"/><text class="t" x="300" y="274"></text></g>
+<text class="c" x="298" y="276">FlinkOrc</text>
+<text class="c" x="298" y="292">StructWriter</text>
+<g class="node engine"><rect class="box" x="416" y="254" width="122" height="52" rx="8"/><text class="t" x="428" y="274"></text></g>
+<text class="c" x="426" y="276">FlinkLance</text>
+<text class="c" x="426" y="292">StructWriter</text>
+<g class="node engine"><rect class="box" x="544" y="254" width="122" height="52" rx="8"/><text class="t" x="556" y="274"></text></g>
+<text class="c" x="554" y="276">FlinkHFile</text>
+<text class="c" x="554" y="292">StructWriter</text>
+<g class="node engine"><rect class="box" x="672" y="254" width="122" height="52" rx="8"/><text class="t" x="684" y="274"></text></g>
+<text class="c" x="682" y="276">FlinkAvroBlock</text>
+<text class="c" x="682" y="292">StructWriter</text>
+<text class="pn" x="66" y="343">Avro / Java</text>
+<g class="node engine"><rect class="box" x="160" y="312" width="122" height="52" rx="8"/><text class="t" x="172" y="332"></text></g>
+<text class="c" x="170" y="334">AvroParquet</text>
+<text class="c" x="170" y="350">StructWriter</text>
+<g class="node engine"><rect class="box" x="288" y="312" width="122" height="52" rx="8"/><text class="t" x="300" y="332"></text></g>
+<text class="c" x="298" y="334">AvroOrc</text>
+<text class="c" x="298" y="350">StructWriter</text>
+<g class="node engine"><rect class="box" x="416" y="312" width="122" height="52" rx="8"/><text class="t" x="428" y="332"></text></g>
+<text class="c" x="426" y="334">AvroLance</text>
+<text class="c" x="426" y="350">StructWriter</text>
+<g class="node engine"><rect class="box" x="544" y="312" width="122" height="52" rx="8"/><text class="t" x="556" y="332"></text></g>
+<text class="c" x="554" y="334">AvroHFile</text>
+<text class="c" x="554" y="350">StructWriter</text>
+<g class="node engine"><rect class="box" x="672" y="312" width="122" height="52" rx="8"/><text class="t" x="684" y="332"></text></g>
+<text class="c" x="682" y="334">AvroAvroBlock</text>
+<text class="c" x="682" y="350">StructWriter</text>
+<text class="p" x="66" y="396">Every cell is a class. Each engine's getter code is repeated once per format,</text>
+<text class="p" x="66" y="413">and each format's write logic is subclassed once per engine.</text>
+<text class="p" x="66" y="430">Today's code is this grid with holes and Avro detours (writer-reader-today.svg).</text>
+<g class="sec"><rect x="830" y="108" width="740" height="32" rx="8"/><text x="846" y="129">Through one row type: N + M = 8 classes</text></g>
+<text class="tag" x="1554" y="129">Paimon's InternalRow model; this RFC</text>
+<g class="node boundary thick"><rect class="box" x="1130" y="196" width="150" height="166" rx="8"/><text class="tc" x="1142" y="216">HoodieRow</text><text class="d" x="1142" y="234">typed getters,</text><text class="d" x="1142" y="249">canonical values</text><text class="d" x="1142" y="264"></text><text class="d" x="1142" y="279">the only row type</text><text class="d" x="1142" y="294">formats see</text></g>
+<g class="node engine"><rect class="box" x="850" y="196" width="200" height="50" rx="8"/><text class="tc" x="862" y="216">SparkRowWrapper</text><text class="d" x="862" y="234">Spark rows in</text></g>
+<path class="edge" d="M1050,221 L1130,226" marker-end="url(#arr)"/>
+<g class="node engine"><rect class="box" x="850" y="254" width="200" height="50" rx="8"/><text class="tc" x="862" y="274">FlinkRowWrapper</text><text class="d" x="862" y="292">Flink rows in</text></g>
+<path class="edge" d="M1050,279 L1130,276" marker-end="url(#arr)"/>
+<g class="node engine"><rect class="box" x="850" y="312" width="200" height="50" rx="8"/><text class="tc" x="862" y="332">AvroRowWrapper</text><text class="d" x="862" y="350">IndexedRecord rows in</text></g>
+<path class="edge" d="M1050,337 L1130,326" marker-end="url(#arr)"/>
+<g class="node format"><rect class="box" x="1360" y="182" width="200" height="34" rx="8"/><text class="t" x="1372" y="202"></text></g>
+<text class="c" x="1372" y="204">ParquetStructWriter</text>
+<path class="edge" d="M1280,216 L1360,199" marker-end="url(#arr)"/>
+<g class="node format"><rect class="box" x="1360" y="222" width="200" height="34" rx="8"/><text class="t" x="1372" y="242"></text></g>
+<text class="c" x="1372" y="244">OrcStructWriter</text>
+<path class="edge" d="M1280,247 L1360,239" marker-end="url(#arr)"/>
+<g class="node format"><rect class="box" x="1360" y="262" width="200" height="34" rx="8"/><text class="t" x="1372" y="282"></text></g>
+<text class="c" x="1372" y="284">LanceStructWriter</text>
+<path class="edge" d="M1280,278 L1360,279" marker-end="url(#arr)"/>
+<g class="node format"><rect class="box" x="1360" y="302" width="200" height="34" rx="8"/><text class="t" x="1372" y="322"></text></g>
+<text class="c" x="1372" y="324">HFileStructWriter</text>
+<path class="edge" d="M1280,309 L1360,319" marker-end="url(#arr)"/>
+<g class="node format"><rect class="box" x="1360" y="342" width="200" height="34" rx="8"/><text class="t" x="1372" y="362"></text></g>
+<text class="c" x="1372" y="364">AvroBlockStructWriter</text>
+<path class="edge" d="M1280,340 L1360,359" marker-end="url(#arr)"/>
+<text class="p" x="846" y="396">Engines write one wrapper each (plus a read view); formats write one struct</text>
+<text class="p" x="846" y="413">writer each. Any pair works at runtime: the wrapper hands its row to the writer.</text>
+<text class="p" x="846" y="430">Precedent: Paimon (InternalRow, FlinkRowWrapper / FlinkRowData).</text>
+<g class="panel"><rect x="50" y="470" width="1520" height="236" rx="8"/></g>
+<text class="ph" x="66" y="494">What each shape costs</text>
+<text class="pn" x="66" y="520"></text>
+<text class="pn" x="640" y="520">Per engine x format</text>
+<text class="pn" x="960" y="520">Through HoodieRow</text>
+<text class="pn" x="1260" y="520">Why it matters</text>
+<line class="sep" x1="66" y1="529" x2="1554" y2="529"/>
+<text class="p" x="66" y="548">Classes for 3 engines x 5 formats (writers)</text>
+<text class="code" x="640" y="548">15</text>
+<text class="code" x="960" y="548">8</text>
+<text class="m" x="1260" y="548">readers double both</text>
+<line class="sep" x1="66" y1="559" x2="1554" y2="559"/>
+<text class="p" x="66" y="578">Add a format (e.g. Vortex for every engine)</text>
+<text class="code" x="640" y="578">+3 classes</text>
+<text class="code" x="960" y="578">+1 class</text>
+<text class="m" x="1260" y="578">formats keep arriving</text>
+<line class="sep" x1="66" y1="589" x2="1554" y2="589"/>
+<text class="p" x="66" y="608">Add a writing engine (e.g. Trino writes)</text>
+<text class="code" x="640" y="608">+5 classes</text>
+<text class="code" x="960" y="608">+1 class</text>
+<text class="m" x="1260" y="608">engines keep arriving</text>
+<line class="sep" x1="66" y1="619" x2="1554" y2="619"/>
+<text class="p" x="66" y="638">Fix how Spark reads decimals</text>
+<text class="code" x="640" y="638">edit 5 classes</text>
+<text class="code" x="960" y="638">edit 1 class</text>
+<text class="m" x="1260" y="638">the INT16 / decimal drift class</text>
+<line class="sep" x1="66" y1="649" x2="1554" y2="649"/>
+<text class="p" x="66" y="668">Cost per value</text>
+<text class="code" x="640" y="668">engine value to format</text>
+<text class="code" x="960" y="668">engine value to canonical value</text>
+<text class="m" x="1260" y="668">same copy today's writers make</text>
+<g class="panel"><rect x="50" y="724" width="1520" height="130" rx="8"/></g>
+<text class="ph" x="66" y="748">The same shape on the type plane</text>
+<text class="p" x="66" y="772">Schema mapping has the same grid: engine types (StructType, RowType, TypeInfo, ...) x physical schemas (MessageType, Arrow, ORC, Avro).</text>
+<text class="p" x="66" y="792">Today it is filled pairwise (three Parquet schema paths, three Hive mappings). Section 1 collapses it the same way, through HoodieSchema:</text>
+<text class="p" x="66" y="812">one TypeSystemMapper per engine or catalog plus one FormatSchemaMapper per format.</text>
+<text class="p" x="66" y="832">Values go through HoodieRow, types go through HoodieSchema: one hub per grid.</text>
+</svg>

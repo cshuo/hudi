@@ -216,6 +216,8 @@ model Apache Paimon uses (`InternalRow`, with `FlinkRowWrapper` and `FlinkRowDat
 `StructLike` interface that `hudi-common` already uses for metadata-table index evaluation into the read / write row,
 with typed getters so values are not boxed.
 
+![Engines x formats: N x M classes, or N + M through one row type](engines-x-formats.svg)
+
 ```java
 /** The one row type file formats read and write. Getters return canonical values. */
 public interface HoodieRow {
