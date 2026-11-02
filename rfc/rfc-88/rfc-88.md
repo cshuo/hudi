@@ -156,25 +156,70 @@ Every mapper converts between `HoodieSchema` and exactly one other type system. 
 2. Every mapper declares, per `HoodieSchemaType` and options, whether it maps `NATIVE`, `LOSSY` (with a reason) or
    `UNSUPPORTED`. Writing an unsupported type fails fast. `LOSSY` may drop type identity, never values; a format that
    cannot store a type's values exactly declares it `UNSUPPORTED`.
-3. `fromX(toX(s))` equals `s` for every `NATIVE` type. A hint (the table schema) resolves types a system cannot express,
-   such as BLOB or VECTOR carried as a struct or array.
+3. `fromX(toX(s))` equals `s` for every `NATIVE` type. For `LOSSY` types, the hint (the table schema) or a marker
+   stored in the target restores the type, as described below.
 4. Every mapper passes the same shared test kit, and RFC-99's interoperability table is its expected output.
 5. Types are added to `HoodieSchema` first, then to every mapper. An engine type with no `HoodieSchema` type fails fast
    in `fromTypeSystem` instead of widening, so nothing is lost on the way in and writers never need the engine schema.
 
-Today's writers take both the engine schema and `HoodieSchema` because each carries something the other lacks. The
-engine schema has integer width: Spark's `ByteType` and `ShortType` become INT in `HoodieSchema`, so the row writer
-reads `ShortType` from `StructType` to write INT(16), while Flink, deriving from `HoodieSchema`, writes plain INT32.
-`HoodieSchema` has timestamp millis, decimal byte width, VECTOR, VARIANT and BLOB, which the Spark writer reads from it.
-Rule 5 moves the first group into `HoodieSchema`; the second is already there and only the mappers read it. A few types
-through the full path, written from Spark:
+**Why writers take two schemas today.** Each carries something the other lacks. The engine schema has integer width:
+Spark's `ByteType` and `ShortType` become INT in `HoodieSchema`, so the row writer reads `ShortType` from `StructType` to
+write INT(16), while Flink, deriving from `HoodieSchema`, writes plain INT32. `HoodieSchema` has timestamp millis,
+decimal byte width, VECTOR, VARIANT and BLOB, which the Spark writer reads from it. Rule 5 moves the first group into
+`HoodieSchema`; the second is already there, and only the mappers read it. Writers then take `HoodieSchema` alone.
 
-| Type | Spark to `HoodieSchema` | `HoodieSchema` to Parquet | Spark reads back |
+**Where identity is lost.** Values are never lost (rule 2). Type identity is, and only on arrows that leave
+`HoodieSchema`:
+
+```
+Write:  Engine --(1)--> HoodieSchema --(2)--> Format
+Read:   Format --(3)--> HoodieSchema --(4)--> Engine
+Sync:                   HoodieSchema --(5)--> Catalog
+```
+
+| Arrow | Lossy | Cases on master |
+|---|---|---|
+| (1) Engine to `HoodieSchema` | never (rule 5) | restores what (4) dropped |
+| (2) `HoodieSchema` to format | a few types | Parquet: VECTOR as FIXED_LEN_BYTE_ARRAY, BLOB as a plain group, UUID as string (the UUID annotation is off by default). Avro: INT16 as `int` once INT16 lands |
+| (3) Format to `HoodieSchema` | never | restores what (2) dropped |
+| (4) `HoodieSchema` to engine | most cases | Spark: TIMESTAMP(3) as micros, TIME as int / long, UUID and ENUM as string, FIXED as binary, VECTOR as array, BLOB as struct. Flink: the same, except timestamps and TIME keep their precision |
+| (5) `HoodieSchema` to catalog | some types | Hive: VECTOR, UUID and FIXED as binary, ENUM as string, BLOB as struct. Never read back, so nothing to restore |
+
+**How identity comes back.** On (1) and (3), `fromTypeSystem(x, hint)` and `fromPhysicalSchema(x, hint)` resolve each
+column in this order:
+
+1. `NATIVE`: the target's own type is exact, such as Parquet INT(16) or TIMESTAMP(MILLIS).
+2. `LOSSY` with a hint: the hint is the table schema, which Hudi already persists as `HoodieSchema` JSON: `schema` in
+   each commit's metadata, `hoodie.table.create.schema` in `hoodie.properties`, the `SCHEMA` header of each log block,
+   and `hoodie.avro.schema` in the write config during a write. It never crosses a lossy arrow, so it restores the
+   exact type. Every Hudi read and write has one.
+3. `LOSSY` without a hint, as in `CREATE TABLE` from engine DDL or a reader without the timeline: a per-column
+   `hudi_type` marker stored in the target. Today Spark keeps it in `StructField` metadata (VECTOR, BLOB), and Parquet
+   and Lance keep `hoodie.vector.columns` in the file footer (VECTOR only). Every `LOSSY` declaration names its marker,
+   and targets with field or file metadata write one for every `LOSSY` column. Flink types have no metadata, so Flink
+   relies on the hint.
+
+The shared test kit checks `from(to(s))` equals `s` for every `LOSSY` type, once with the hint and once with the marker
+alone.
+
+**Example: VECTOR(128, FLOAT), written and read by Spark.**
+
+1. (1) Spark hands over `emb array<float>`. The hint says `emb` is VECTOR(128, FLOAT), so `SparkTypeMapper` returns
+   VECTOR. On `CREATE TABLE`, before any hint exists, the `hudi_type` marker on the `StructField` says the same.
+2. (2) `ParquetSchemaMapper` writes FIXED_LEN_BYTE_ARRAY(512) and the footer marker `emb:VECTOR(128)` (FLOAT is the
+   default). `LOSSY`: Parquet has no vector type, but all 512 bytes are kept.
+3. (3) `ParquetSchemaMapper` sees FIXED_LEN_BYTE_ARRAY(512) and returns VECTOR(128, FLOAT) from the hint, or from the
+   footer marker for a reader without the timeline. With neither, the column reads as FIXED(512), values intact.
+4. (4) `SparkTypeMapper` returns `array<float>` with the `hudi_type` marker in the field metadata. `LOSSY`: Spark has no
+   vector type, and the next write restores it in step 1.
+
+A few more types, written and read back by Spark:
+
+| Type | (1) Spark to `HoodieSchema` | (2) `HoodieSchema` to Parquet | (4) Spark reads back |
 |---|---|---|---|
 | SMALLINT | `ShortType` to INT16 (today INT) | INT32 + INT(16), the same from Flink | `ShortType`, `NATIVE` |
-| TIMESTAMP(3) | `TimestampType`; the hint keeps millis | INT64 + TIMESTAMP(MILLIS) | `TimestampType` (micros), `LOSSY`: identity only |
-| DECIMAL(10,2) as fixed(8) | `DecimalType(10,2)`; the hint keeps the declared width | FIXED_LEN_BYTE_ARRAY(8) | `DecimalType(10,2)`, `NATIVE` |
-| VECTOR(128, FLOAT) | `array<float>`; the hint restores VECTOR | FIXED_LEN_BYTE_ARRAY(512) | `array<float>`, `LOSSY`: identity only |
+| TIMESTAMP(3) | `TimestampType`; the hint keeps millis | INT64 + TIMESTAMP(MILLIS), `NATIVE` | `TimestampType` (micros), `LOSSY` |
+| DECIMAL(10,2) as fixed(8) | `DecimalType(10,2)`; the hint keeps the declared width | FIXED_LEN_BYTE_ARRAY(8), `NATIVE` | `DecimalType(10,2)`, `NATIVE` |
 | Flink TIMESTAMP(9) | no `HoodieSchema` type: fails fast, as today | n/a until nanosecond TIMESTAMP lands | n/a |
 
 Narrowing a value to the declared column type on write (Spark micros into a millis column) is a cast to the table
