@@ -529,15 +529,27 @@ follow-up, taken only if the rollout benchmarks show the copy matters.
 * **Per-engine subclasses of each format's struct writer and reader** (`SparkXFormatStructWriter`,
   `FlinkXFormatStructWriter`, ...), as sketched in the first version of this RFC. Once applied to every format this is
   one class per engine x format, and the engine's getter code is repeated per format.
-* **Iceberg's `FormatModel` registry**: one registered model per (format, engine data type) pair, built for direct
-  conversion without an intermediate row. It keeps engine x format implementations by design; the drift listed in the
-  background is what that shape produces in Hudi.
+* **Iceberg's engine x format writers** (`SparkParquetWriters`, `FlinkParquetWriters`, `SparkOrcValueWriters`,
+  `FlinkOrcWriters`, `SparkAvroWriter`, `FlinkAvroWriter`; the `FormatModel` registry indexes them): shared
+  `ParquetValueWriters` cover primitives and the struct / repeated base classes, and each engine supplies its own writers
+  for strings, UUIDs, three decimal encodings, timestamps, binary, arrays, maps and structs (about 550 lines per engine
+  for Parquet alone), again for ORC and Avro. Compared on maintenance, conversion and performance:
+  * Schema drift (the `INT(16)` annotation, three `MessageType` derivations) is fixed by the section 1 mappers in
+    either model.
+  * Maintenance: this model writes each engine's value code once per format; `HoodieRow` writes it once per engine.
+    Every new format needs per-engine value code before an engine can write it, which is why Spark and Flink cannot
+    write ORC today and Flink cannot write Vortex.
+  * Conversion: the same in both. A wrapper runs the conversion the engine-specific value writer would run, once per
+    value, without materializing a row (2.1, 2.4).
+  * Performance: `HoodieRow` adds one interface call per field, measured against today's writers before each format
+    switches (rollout step 4). Engine-native paths stay where a benchmark shows they matter (`VectorizedFileReader`,
+    the row-builder follow-up in 2.4).
 * **Delta Kernel's engine handlers**: the engine reads and writes files with its own code. Adopted only for the
   vectorized fast paths above.
 * **Keep each engine's own writers and remove only the Avro step** (vinothchandar's review of the first version: a Flink
   Parquet writer should write `RowData` without conversions). This is today's shape minus Avro; it keeps one writer per
-  engine x format and the drift listed in the background. The copy a wrapper makes is the one engine writers already
-  make (2.1).
+  engine x format, with the maintenance cost above. The copy a wrapper makes is the one engine writers already make
+  (2.1).
 * **`HoodieRecord` at the format boundary.** Three shapes: (a) keep `HoodieRecord` at `HoodieFileWriter` and give
   formats a `HoodieRow` view through `asRow()`, adopted (2.2, 3); (b) typed getters on `HoodieRecord` itself, rejected
   for now because nested structs, arrays and map entries still need a row type with no key or location, and abstract
