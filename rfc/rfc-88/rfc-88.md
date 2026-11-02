@@ -160,11 +160,13 @@ Every mapper converts between `HoodieSchema` and exactly one other type system. 
    stored in the target restores the type, as described below.
 4. Every mapper passes the same shared test kit, and RFC-99's interoperability table is its expected output.
 5. Types are added to `HoodieSchema` first, then to every mapper. This rule is not negotiable. Two tiers:
-   * Anything that affects values, physical layout, comparison or ordering (integer width, signedness, precision,
-     time zone semantics, collation, CHAR padding) is a `HoodieSchemaType`, which every mapper must declare. An engine
-     type that needs one and has none fails fast in `fromTypeSystem` instead of widening.
-   * Details that affect none of these (VARCHAR length, engine column options) are per-field properties on
-     `HoodieSchema` (`HoodieSchemaField.getProp` / `addProp`). Every mapper preserves them and may ignore them.
+   * Anything that affects values, physical layout, comparison or ordering (integer width, signedness, decimal
+     precision and scale, timestamp unit, time zone semantics, collation, CHAR padding) is a `HoodieSchemaType`, which
+     every mapper must declare. An engine type that needs one and has none fails fast in `fromTypeSystem` instead of
+     widening.
+   * Details that affect none of these (VARCHAR length, a timestamp's declared precision within its unit such as Flink
+     TIMESTAMP(4) stored as micros, engine column options) are per-field properties on `HoodieSchema`
+     (`HoodieSchemaField.getProp` / `addProp`). Every mapper preserves them and may ignore them.
      VARCHAR(n) qualifies because its values, bytes and ordering are those of STRING; only the write-time length check
      is engine-specific. CHAR(n) does not: Spark and Hive pad it and compare it ignoring trailing spaces.
 
@@ -290,8 +292,9 @@ without `hudi-common` depending on them.
 
 The logical types RFC-99 specified but did not implement (TINYINT, SMALLINT, unsigned integers, FLOAT16, nanosecond
 TIMESTAMP, LARGE_STRING, LARGE_BINARY, DATE64, DURATION, DICTIONARY) land here, each together with its declaration in
-every mapper and its rows in the shared tests. CHAR(n) is added the same way, though RFC-99 did not specify it; until it
-lands, CHAR keeps today's mapping to STRING with padded values, the one exception to rule 5's fail-fast. A type is not
+every mapper and its rows in the shared tests. CHAR(n) is added the same way, though RFC-99 did not specify it. Until a
+type lands, engines keep today's mapping for it (CHAR to STRING with padded values, TINYINT and SMALLINT to INT); rule
+5's fail-fast applies to a type only once its `HoodieSchemaType` exists (rollout step 2). A type is not
 done until every mapper declares it. Each new type also specifies how it persists in the Avro JSON schema (a
 logical-type property old readers ignore) so older readers degrade to the base type.
 
@@ -668,8 +671,11 @@ way, because the lookups are shared.
 
 1. **Mappers.** Add `TypeSupport`, the mapper interfaces and the registry, with implementations that wrap today's
    converters. No behaviour or on-disk change. Shared-test failures (INT16, UUID, DECIMAL, VECTOR) become the bug list.
-2. **Converge mappings.** Callers use the mappers; the duplicated converters are deleted; repair moves into the format
-   mappers; Trino takes its columns from `HoodieSchema`; the remaining RFC-99 types land.
+2. **Converge mappings.** First the missing types (INT8, INT16, CHAR and the remaining RFC-99 types) land in
+   `HoodieSchema` and every mapper. Then callers switch to the mappers, one path at a time; the duplicated converters
+   are deleted; repair moves into the format mappers; Trino takes its columns from `HoodieSchema`. A path keeps today's
+   converter, and its writer keeps the engine schema, until the types it relies on have landed, so no engine schema
+   accepted on master is rejected and no writer loses information it uses today.
 3. **`HoodieRow` with its first format.** Add `HoodieRow`, the Spark, Flink and Avro wrappers and read views, and ORC
    through `OrcFileFormatIO` (write and read). Spark and Flink gain ORC; there is no engine ORC path to regress.
 4. **One format at a time.** Avro and HFile log blocks (inline log format), then Parquet behind a benchmark against
@@ -689,5 +695,8 @@ Each step ships on its own. No migration is needed for existing tables.
 * **Format contract tests**: every `FileFormatIO` with every engine wrapper writes and reads back every type; files
   written by different engines are byte-identical for the same rows.
 * **Cross-engine golden tables**: write with each engine, read with every other.
+* **Compatibility tests**: every engine schema master accepts (Spark `ByteType` / `ShortType` / CHAR / VARCHAR, Flink
+  TINYINT / SMALLINT / CHAR / VARCHAR / TIMESTAMP(0-6)) is still accepted after each rollout step, and tables written
+  by master read back with the same values and file layouts.
 * **Expression oracle**: for every engine, rows returned with pruning equal rows returned without it.
 * **Benchmarks**: write and read throughput per format against today's engine writers and readers before each switch.
