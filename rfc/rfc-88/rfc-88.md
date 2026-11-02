@@ -322,7 +322,8 @@ public interface HoodieRow {
   float getFloat(int i);
   double getDouble(int i);
   byte[] getBinary(int i);                   // STRING as UTF-8, BINARY, FIXED, UUID
-  HoodieDecimal getDecimal(int i, int precision, int scale);   // unscaled long up to 18 digits, else unscaled bytes
+  long getDecimalUnscaledLong(int i, int precision, int scale);    // precision <= 18
+  byte[] getDecimalUnscaledBytes(int i, int precision, int scale); // precision > 18, big-endian two's complement
   int getDate(int i);                        // epoch days
   long getTimestamp(int i, int precision);   // precision <= 6, in the column's unit
   HoodieTimestamp getNanoTimestamp(int i, int precision);   // precision 7-9: epoch millis + nano of milli, full range
@@ -370,7 +371,8 @@ Today's engine writers already make these conversions at this boundary: the Parq
 (`getUTF8String(i).getBytes()` in Spark, `getString(i).toBytes()` in Flink), and all but Flink's Parquet writer build
 decimals through `BigDecimal`. A wrapper moves those conversions rather than adding them, and an unscaled `long` decimal
 costs less. ORC, HFile and Avro block writers convert every row to a `GenericRecord` first, which a wrapper removes.
-What a wrapper adds is one interface call per field; the Parquet benchmark in rollout step 4 measures it.
+Those paths get faster; for the direct engine writers (Spark and Flink Parquet and Lance) the target is parity, not a
+gain. What a wrapper adds is one interface call per field; the benchmarks in rollout step 4 measure it.
 
 On the read side, a `HoodieRow` is backed by what the reader decoded. Row formats (Avro and HFile blocks) decode into one
 reused `GenericHoodieRow` per reader, an array of canonical values like Paimon's `GenericRow`. Columnar formats
@@ -378,6 +380,34 @@ reused `GenericHoodieRow` per reader, an array of canonical values like Paimon's
 row is materialized. Reuse is safe because a caller that keeps a row copies it: the file group reader's buffer does so
 on every insert (`seal` / `toBinary`), as it already does for the reused row Spark's Avro deserializer returns today,
 and `copy()` on a read view materializes a standalone engine row. Section 2.4 walks the full path.
+
+Readers decode through a builder, so the decode target is pluggable without a per-engine decoder:
+
+```java
+/** What a format's struct reader writes decoded values into. */
+public interface HoodieRowBuilder<R> {
+  void setNull(int i);
+  void setInt(int i, int v);
+  void setLong(int i, long v);
+  void setBinary(int i, byte[] v, int offset, int length);
+  void setDecimalUnscaledLong(int i, long unscaled, int precision, int scale);
+  ...                                    // one setter per HoodieRow getter
+  R build();                             // reused; the caller copies a row it keeps
+}
+```
+
+`GenericHoodieRow` is the default builder. An engine may supply its own, such as a Spark builder over `UnsafeRowWriter`
+that hands `UnsafeRow` straight to the file group reader, so a reader can produce engine rows directly with one decoder
+per format and one builder per engine. Columnar formats keep the batch view, which builds no row at all.
+
+What each getter costs, for the write wrappers and read views alike:
+
+| Getter | Returns | Allocation |
+|---|---|---|
+| `getInt`, `getLong`, `getFloat`, `getDouble`, `getBoolean`, `getDate`, `getTimestamp`, `getDecimalUnscaledLong` | primitive | none beyond what the engine getter allocates (Flink's `DecimalData`, Spark's `Decimal` for non-`UnsafeRow` rows) |
+| `getBinary`, `getDecimalUnscaledBytes` | `byte[]` valid until the next `replace` | the same copy today's writers make (`getUTF8String(i).getBytes()`, `toBytes()`, `toUnscaledBytes()`); read views over a decoded buffer return it without copying |
+| `getRow`, `getArray`, `getMap` | a view, reused per nesting level, valid until the next call on its parent | none per value |
+| `getNanoTimestamp` | `HoodieTimestamp` | one object per value, as Flink's `TimestampData` today |
 
 #### 2.2 One reader and writer per format
 
@@ -427,7 +457,7 @@ Readers mirror this: a format's struct reader fills a `HoodieRow` from the file 
 
 | Implementation | Replaces |
 |---|---|
-| `ParquetFileFormatIO` | `HoodieAvroParquetWriter`, `HoodieSparkParquetWriter`, `HoodieInternalRowParquetWriter`, `HoodieRowDataParquetWriter` and their write supports; the row-based Parquet readers |
+| `ParquetFileFormatIO` | `HoodieAvroParquetWriter`, `HoodieSparkParquetWriter`, `HoodieInternalRowParquetWriter`, `HoodieRowDataParquetWriter` and their write supports; the Avro-based Parquet readers (`HoodieAvroParquetReader`) |
 | `LanceFileFormatIO` | `HoodieSparkLanceWriter`, `HoodieRowDataLanceWriter` and both Lance readers |
 | `OrcFileFormatIO` | `HoodieAvroOrcWriter` / `HoodieAvroOrcReader`; Spark and Flink can now write ORC |
 | `HFileFormatIO` | `HoodieAvroHFileWriter` and the HFile readers; values stay Avro binary, encoded from rows |
@@ -448,8 +478,10 @@ view over the row (as `HoodieInternalRow` does for Spark today), and passes `rec
 #### 2.3 Engine fast paths
 
 Engine batch readers stay: Spark's vectorized Parquet and Arrow readers, Flink's vectorized Parquet reader and Trino's
-Page source. They sit behind an optional interface, must read with the same physical schema and plan, and must return
-the same rows as the row reader:
+Page source. So do engine-native row readers that already build engine rows from the format without Avro, such as
+`HoodieSparkParquetReader` over Spark's `ParquetReadSupport`; `HoodieRow` readers replace Hudi's own Avro-based, HFile,
+log block, ORC and Lance readers, not engine code. Fast paths sit behind an optional interface, must read with the same
+physical schema and plan, and must return the same rows as the row reader:
 
 ```java
 public interface VectorizedFileReader<B> extends Closeable {
@@ -520,9 +552,9 @@ Proposed:
 Result: the `IndexedRecord` and the second decode from step 3 disappear. Nothing new is materialized; the view adds one
 interface call per field while `UnsafeProjection` reads it. Bytes on disk are identical.
 
-Reusing one `HoodieRow` is safe because step 5 copies every record it keeps. Decoding straight into an `UnsafeRowWriter`
-through a per-engine row builder (one per engine, not per engine x format) would also remove the step 5 copy; that is a
-follow-up, taken only if the rollout benchmarks show the copy matters.
+Reusing one `HoodieRow` is safe because step 5 copies every record it keeps. With a Spark `HoodieRowBuilder` over
+`UnsafeRowWriter` (2.1), step 2 decodes straight into `UnsafeRow`, and step 5 skips its `UnsafeProjection`; the
+benchmarks decide whether it ships alongside the default builder.
 
 #### 2.5 Alternatives considered
 
@@ -714,8 +746,9 @@ way, because the lookups are shared.
    through `OrcFileFormatIO` (write and read). Spark and Flink gain ORC; there is no engine ORC path to regress.
 4. **One format at a time.** Avro and HFile log blocks (inline log format), then Parquet behind a benchmark against
    today's writers and readers (base files and native logs, the default path), then Lance and Vortex. Old writers and
-   readers stay until their replacement lands; engine vectorized readers move behind `VectorizedFileReader` without being
-   rewritten.
+   readers stay until their replacement lands; engine vectorized readers move behind `VectorizedFileReader` and engine
+   native row readers stay as they are, neither rewritten. An engine and format pair whose benchmark regresses keeps its
+   existing direct path.
 5. **Expressions**, independent of steps 3 and 4. Translators and renderers, then the index planner and lookups; Hive
    gains data skipping.
 
@@ -733,4 +766,6 @@ Each step ships on its own. No migration is needed for existing tables.
   TINYINT / SMALLINT / CHAR / VARCHAR / TIMESTAMP(0-6)) is still accepted after each rollout step, and tables written
   by master read back with the same values and file layouts.
 * **Expression oracle**: for every engine, rows returned with pruning equal rows returned without it.
-* **Benchmarks**: write and read throughput per format against today's engine writers and readers before each switch.
+* **Benchmarks**: before each switch, per format and engine, against each existing direct writer and reader:
+  throughput, CPU and allocated bytes per row, on decimal-heavy, string-heavy and nested workloads as well as a mixed
+  one.
