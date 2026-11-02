@@ -241,7 +241,8 @@ public interface HoodieRow {
   byte[] getBinary(int i);                   // STRING as UTF-8, BINARY, FIXED, UUID
   HoodieDecimal getDecimal(int i, int precision, int scale);   // unscaled long up to 18 digits, else unscaled bytes
   int getDate(int i);                        // epoch days
-  long getTimestamp(int i, int precision);   // in the column's unit
+  long getTimestamp(int i, int precision);   // precision <= 6, in the column's unit
+  HoodieTimestamp getNanoTimestamp(int i, int precision);   // precision 7-9: epoch millis + nano of milli, full range
   HoodieRow getRow(int i, int numFields);
   HoodieArray getArray(int i);               // same typed getters by index
   HoodieMap getMap(int i);                   // key and value HoodieArrays
@@ -249,8 +250,10 @@ public interface HoodieRow {
 ```
 
 Each engine provides one wrapper per direction. Wrappers are reused across rows (`replace(row)`, as Paimon's
-`FlinkRowData` does), and conversions happen once per logical type inside them. Read views do not copy values; `copy()`
-materializes a row when the engine buffers it:
+`FlinkRowData` does), and so are the wrappers `getRow`, `getArray` and `getMap` return, one per nesting level.
+Conversions happen once per logical type inside them. A nanosecond `long` would overflow outside roughly 1677-2262, so
+precision above 6 uses a two-part value, as Flink's `TimestampData` and its INT96 writer do today. Read views do not
+copy values; `copy()` materializes a row when the engine buffers it:
 
 ```java
 /** Write: an engine row seen as a HoodieRow. */
@@ -280,9 +283,11 @@ final class HoodieSparkRow extends InternalRow {
 | Hive (read only) | n/a | copies into `ArrayWritable`; replaces Avro then `avroToArrayWritable` |
 | Trino (read only) | n/a | appends into Block builders for merged reads; replaces `HudiAvroSerializer` |
 
-Today's engine writers already copy at this boundary (Spark's Parquet writer calls `getUTF8String(i).getBytes()` and
-builds decimals through `BigDecimal`; Flink's calls `getString(i).toBytes()`), so a wrapper costs no more than they do,
-and an unscaled `long` decimal costs less.
+Today's engine writers already make these conversions at this boundary: the Parquet and Lance writers copy strings out
+(`getUTF8String(i).getBytes()` in Spark, `getString(i).toBytes()` in Flink), and all but Flink's Parquet writer build
+decimals through `BigDecimal`. A wrapper moves those conversions rather than adding them, and an unscaled `long` decimal
+costs less. ORC, HFile and Avro block writers convert every row to a `GenericRecord` first, which a wrapper removes.
+What a wrapper adds is one interface call per field; the Parquet benchmark in rollout step 4 measures it.
 
 #### 2.2 One reader and writer per format
 
