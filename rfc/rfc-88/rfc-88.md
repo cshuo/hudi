@@ -363,18 +363,23 @@ straight to Avro binary, so there is no `GenericRecord` per record. Reading them
 which engines see through their read view, instead of decoding to `IndexedRecord` and converting each record again.
 Merging stays in the FileGroupReader and its `RecordContext`.
 
-The full path for an Avro data block (inline log format, write version below 10), Spark shown; Flink differs only in
-its converter (`RowDataQueryContext.getRowDataToAvroConverter()`). A full copy is one pass that copies every value of the
-record into a new object or buffer.
+For an Avro data block (inline log format, write version below 10), each direction loses one intermediate object per
+record. Spark shown; Flink differs only in its converter (`RowDataQueryContext.getRowDataToAvroConverter()`):
 
-| Step | Today | Proposed |
+```
+Write, today:     InternalRow --> GenericRecord --> Avro bytes
+Write, proposed:  InternalRow ------------------> Avro bytes      (read through SparkRowWrapper)
+
+Read, today:      Avro bytes  --> IndexedRecord --> InternalRow
+Read, proposed:   Avro bytes  --> HoodieRow                       (seen as an InternalRow through HoodieSparkRow)
+```
+
+| Stage | Today | Proposed |
 |---|---|---|
-| Write 1 | `HoodieAvroDataBlock.serializeRecords` calls `getAvroBytes` per record | the `AvroBinaryFormatIO` writer (`OutputStream` target) receives each row |
-| Write 2 | `HoodieSparkRecord.getAvroBytes`: `createInternalRowToAvroConverter(...).apply(row)` builds a `GenericRecord` (full copy) | `SparkRowWrapper.replace(row)` (pointer swap) |
-| Write 3 | `HoodieAvroUtils.avroToBytesStream`: `GenericDatumWriter` encodes the `GenericRecord` (full copy) | the Avro struct writer reads each field through the wrapper and writes it to the `BinaryEncoder` (full copy) |
-| Read 1 | `RecordIterator`: `GenericDatumReader` decodes into an `IndexedRecord` (full copy) | the `AvroBinaryFormatIO` reader decodes into a `HoodieRow` (full copy) |
-| Read 2 | `RecordContext.convertAvroRecord` builds an `InternalRow` (full copy) | `HoodieSparkRow` wraps the `HoodieRow` (no copy) |
-| Read 3 | `projectLogBlockRecords`, then the FileGroupReader merges with base-file rows | same |
+| Write: row to Avro record | `HoodieSparkRecord.getAvroBytes` runs `createInternalRowToAvroConverter(...).apply(row)` and builds a `GenericRecord` (full copy) | **removed**; the writer reads the row through `SparkRowWrapper` (pointer swap) |
+| Write: encode | `HoodieAvroUtils.avroToBytesStream` encodes the `GenericRecord` with `GenericDatumWriter` (full copy) | the Avro struct writer encodes each field from the wrapper into the `BinaryEncoder` (full copy) |
+| Read: decode | `RecordIterator` decodes into an `IndexedRecord` with `GenericDatumReader` (full copy) | the `AvroBinaryFormatIO` reader decodes into a `HoodieRow` (full copy) |
+| Read: Avro record to engine row | `RecordContext.convertAvroRecord` builds an `InternalRow` (full copy) | **removed**; `HoodieSparkRow` wraps the `HoodieRow` (no copy) |
 | Full copies per record | 2 on write, 2 on read | 1 on write, 1 on read |
 
 Bytes on disk are identical. Because the FileGroupReader buffers log records by key for merging, the reader allocates a
