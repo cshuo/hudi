@@ -70,8 +70,10 @@ formats, and the copies disagree:
 * **No loss is declared anywhere.** Examples, all on master:
   * Flink TINYINT / SMALLINT and Spark `ByteType` / `ShortType` map to `HoodieSchemaType.INT`. Flink's Parquet writer
     derives its schema from `HoodieSchema`, so it writes plain INT32; Spark's row writer derives it from `StructType`, so
-    it annotates `ShortType` as `INT(16)` and throws on `ByteType`. The width is lost and the physical layout depends on
-    the writer. RFC-99's mapping table says SMALLINT is `INT32 + INTEGER(16)`.
+    it annotates `ShortType` as `INT(16)` and throws on `ByteType`. Values are the same bytes, but the width is lost from
+    the table schema and the file schema depends on the writer. In Lance the storage width does too: Spark stores
+    `ShortType` as Arrow `Int16`, Flink stores the same column as `Int32`. RFC-99's mapping table says SMALLINT is
+    `INT32 + INTEGER(16)`.
   * UUID is declared `binary` by Hive sync and `STRING` by BigQuery sync.
   * BigQuery sync maps every DECIMAL to `NUMERIC`, which holds at most scale 9.
   * Hive sync stores VECTOR as `binary`.
