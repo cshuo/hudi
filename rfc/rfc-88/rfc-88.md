@@ -363,6 +363,24 @@ straight to Avro binary, so there is no `GenericRecord` per record. Reading them
 which engines see through their read view, instead of decoding to `IndexedRecord` and converting each record again.
 Merging stays in the FileGroupReader and its `RecordContext`.
 
+The full path for an Avro data block (inline log format, write version below 10), Spark shown; Flink differs only in
+its converter (`RowDataQueryContext.getRowDataToAvroConverter()`). A full copy is one pass that copies every value of the
+record into a new object or buffer.
+
+| Step | Today | Proposed |
+|---|---|---|
+| Write 1 | `HoodieAvroDataBlock.serializeRecords` calls `getAvroBytes` per record | the `AvroBinaryFormatIO` writer (`OutputStream` target) receives each row |
+| Write 2 | `HoodieSparkRecord.getAvroBytes`: `createInternalRowToAvroConverter(...).apply(row)` builds a `GenericRecord` (full copy) | `SparkRowWrapper.replace(row)` (pointer swap) |
+| Write 3 | `HoodieAvroUtils.avroToBytesStream`: `GenericDatumWriter` encodes the `GenericRecord` (full copy) | the Avro struct writer reads each field through the wrapper and writes it to the `BinaryEncoder` (full copy) |
+| Read 1 | `RecordIterator`: `GenericDatumReader` decodes into an `IndexedRecord` (full copy) | the `AvroBinaryFormatIO` reader decodes into a `HoodieRow` (full copy) |
+| Read 2 | `RecordContext.convertAvroRecord` builds an `InternalRow` (full copy) | `HoodieSparkRow` wraps the `HoodieRow` (no copy) |
+| Read 3 | `projectLogBlockRecords`, then the FileGroupReader merges with base-file rows | same |
+| Full copies per record | 2 on write, 2 on read | 1 on write, 1 on read |
+
+Bytes on disk are identical. Because the FileGroupReader buffers log records by key for merging, the reader allocates a
+new `HoodieRow` and view per record rather than reusing one, so values are still copied once. Where an engine needs its
+own serialized form to spill buffered records (Spark's `UnsafeRow`), that conversion is outside this change.
+
 #### 2.5 Alternatives considered
 
 * **Per-engine subclasses of each format's struct writer and reader** (`SparkXFormatStructWriter`,
