@@ -125,9 +125,10 @@ lookups only. Everything else runs on each engine's own expression model:
 
 ## Non-goals
 
-* Changing data bytes or rewriting existing files. Avro / HFile log blocks keep their encoding. One Parquet label
-  changes: SMALLINT / TINYINT columns get `INT(16)` / `INT(8)` on every write path (today only Spark's row writer adds
-  it); readers that ignore the label read INT32 as before.
+* Rewriting existing files. Avro / HFile log blocks keep their encoding. Where today's write paths differ (the
+  `INT(16)` label, list structure, `bytes`-backed decimals), the converged mapper only emits layouts that a current
+  writer already emits and keeps today's knobs as `PhysicalOptions` with today's defaults, so supported readers already
+  read every file it writes. A layout no current writer produces waits for a table-version bump.
 * Replacing the persisted schema. It stays Avro JSON plus Hudi logical-type properties, read and written through
   `HoodieSchema.parse` / `toString` (RFC-99); the first version of this RFC proposed a new persisted format.
 * Schema evolution semantics and field ids, owned by [RFC-104](https://github.com/apache/hudi/pull/18661).

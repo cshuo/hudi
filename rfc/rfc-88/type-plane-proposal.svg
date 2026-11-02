@@ -433,8 +433,8 @@
   <text class="p" x="82" y="1584">Hudi-aware readers (Trino included) take columns from HoodieSchema; catalog</text>
   <text class="p" x="82" y="1598">types serve readers that do not understand Hudi.</text>
   <text class="pn" x="66" y="1614">7</text>
-  <text class="p" x="82" y="1614">Data bytes do not change; existing files are never rewritten. Converging</text>
-  <text class="p" x="82" y="1628">adds labels only (INT(16) / INT(8) on every write path).</text>
+  <text class="p" x="82" y="1614">Mappers only emit layouts a current writer emits; anything new waits</text>
+  <text class="p" x="82" y="1628">for a table-version bump. Existing files are never rewritten.</text>
 
   <g class="panel"><rect x="580" y="1386" width="490" height="250" rx="8"/></g>
   <text class="ph" x="596" y="1410">Conformance kit (shared tests)</text>
