@@ -154,10 +154,31 @@ Every mapper converts between `HoodieSchema` and exactly one other type system. 
 
 1. Engines, formats and catalogs never map to each other directly; everything goes through `HoodieSchema`.
 2. Every mapper declares, per `HoodieSchemaType` and options, whether it maps `NATIVE`, `LOSSY` (with a reason) or
-   `UNSUPPORTED`. Writing an unsupported type fails fast.
+   `UNSUPPORTED`. Writing an unsupported type fails fast. `LOSSY` may drop type identity, never values; a format that
+   cannot store a type's values exactly declares it `UNSUPPORTED`.
 3. `fromX(toX(s))` equals `s` for every `NATIVE` type. A hint (the table schema) resolves types a system cannot express,
    such as BLOB or VECTOR carried as a struct or array.
 4. Every mapper passes the same shared test kit, and RFC-99's interoperability table is its expected output.
+5. Types are added to `HoodieSchema` first, then to every mapper. An engine type with no `HoodieSchema` type fails fast
+   in `fromTypeSystem` instead of widening, so nothing is lost on the way in and writers never need the engine schema.
+
+Today's writers take both the engine schema and `HoodieSchema` because each carries something the other lacks. The
+engine schema has integer width: Spark's `ByteType` and `ShortType` become INT in `HoodieSchema`, so the row writer
+reads `ShortType` from `StructType` to write INT(16), while Flink, deriving from `HoodieSchema`, writes plain INT32.
+`HoodieSchema` has timestamp millis, decimal byte width, VECTOR, VARIANT and BLOB, which the Spark writer reads from it.
+Rule 5 moves the first group into `HoodieSchema`; the second is already there and only the mappers read it. A few types
+through the full path, written from Spark:
+
+| Type | Spark to `HoodieSchema` | `HoodieSchema` to Parquet | Spark reads back |
+|---|---|---|---|
+| SMALLINT | `ShortType` to INT16 (today INT) | INT32 + INT(16), the same from Flink | `ShortType`, `NATIVE` |
+| TIMESTAMP(3) | `TimestampType`; the hint keeps millis | INT64 + TIMESTAMP(MILLIS) | `TimestampType` (micros), `LOSSY`: identity only |
+| DECIMAL(10,2) as fixed(8) | `DecimalType(10,2)`; the hint keeps the declared width | FIXED_LEN_BYTE_ARRAY(8) | `DecimalType(10,2)`, `NATIVE` |
+| VECTOR(128, FLOAT) | `array<float>`; the hint restores VECTOR | FIXED_LEN_BYTE_ARRAY(512) | `array<float>`, `LOSSY`: identity only |
+| Flink TIMESTAMP(9) | no `HoodieSchema` type: fails fast, as today | n/a until nanosecond TIMESTAMP lands | n/a |
+
+Narrowing a value to the declared column type on write (Spark micros into a millis column) is a cast to the table
+schema, as today, not a mapper loss.
 
 ```java
 public final class TypeSupport {
@@ -210,8 +231,8 @@ Implementations, and what each replaces:
 Mappers are discovered with `ServiceLoader` through a `SchemaMappers` registry, so engine and sync modules plug in
 without `hudi-common` depending on them.
 
-The logical types RFC-99 specified but did not implement (TINYINT, SMALLINT, unsigned integers, FLOAT16, LARGE_STRING,
-LARGE_BINARY, DATE64, DURATION, DICTIONARY) land here, each together with its declaration in every mapper and its rows
+The logical types RFC-99 specified but did not implement (TINYINT, SMALLINT, unsigned integers, FLOAT16, nanosecond
+TIMESTAMP, LARGE_STRING, LARGE_BINARY, DATE64, DURATION, DICTIONARY) land here, each together with its declaration in every mapper and its rows
 in the shared tests. A type is not done until every mapper declares it. Each new type also specifies how it persists in
 the Avro JSON schema (a logical-type property old readers ignore) so older readers degrade to the base type.
 
@@ -251,9 +272,9 @@ public interface HoodieRow {
 
 Each engine provides one wrapper per direction. Wrappers are reused across rows (`replace(row)`, as Paimon's
 `FlinkRowData` does), and so are the wrappers `getRow`, `getArray` and `getMap` return, one per nesting level.
-Conversions happen once per logical type inside them. A nanosecond `long` would overflow outside roughly 1677-2262, so
-precision above 6 uses a two-part value, as Flink's `TimestampData` and its INT96 writer do today. Read views do not
-copy values; `copy()` materializes a row when the engine buffers it:
+Conversions happen once per logical type inside them. For nanosecond TIMESTAMP (section 1), a nanosecond `long` would
+overflow outside roughly 1677-2262, so precision above 6 uses a two-part value, as Flink's `TimestampData` does. Read
+views do not copy values; `copy()` materializes a row when the engine buffers it:
 
 ```java
 /** Write: an engine row seen as a HoodieRow. */
