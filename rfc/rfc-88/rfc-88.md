@@ -131,7 +131,8 @@ lookups only. Everything else runs on each engine's own expression model:
   read every file it writes. A layout no current writer produces waits for a table-version bump.
 * Replacing the persisted schema. It stays Avro JSON plus Hudi logical-type properties, read and written through
   `HoodieSchema.parse` / `toString` (RFC-99); the first version of this RFC proposed a new persisted format.
-* Schema evolution semantics and field ids, owned by [RFC-104](https://github.com/apache/hudi/pull/18661).
+* Schema evolution semantics, field ids and retiring `InternalSchema`, owned by
+  [RFC-104](https://github.com/apache/hudi/pull/18661).
 * The record merger API (RFC-101). Payload-based and custom record merging still convert records to Avro; removing that
   belongs to payload deprecation (RFC-97) and the merger API.
 * Replacing engine vectorized readers.
@@ -143,7 +144,7 @@ lookups only. Everything else runs on each engine's own expression model:
 | `HoodieSchema`, the type set and RFC-99's interoperability table (the spec) | RFC-99 |
 | Type plane: mappers, `TypeSupport`, catalog renderers, shared tests; the types RFC-99 left open; Avro-free internals | this RFC |
 | Data plane: reader / writer, `HoodieRecord` / `KeyGenerator`, expressions | this RFC |
-| Field ids, schema evolution | RFC-104 |
+| Field ids, schema evolution, retiring `InternalSchema` | RFC-104 |
 
 ### 1. Type plane: mapping `HoodieSchema` to every boundary
 
@@ -193,7 +194,7 @@ Implementations, and what each replaces:
 
 | Interface | Implementation | Replaces |
 |---|---|---|
-| `TypeSystemMapper` | `SparkTypeMapper` | `HoodieSparkSchemaConverters`, `SparkInternalSchemaConverter`, `SparkFilterHelper.convertDataType` |
+| `TypeSystemMapper` | `SparkTypeMapper` | `HoodieSparkSchemaConverters`, `SparkFilterHelper.convertDataType`; `SparkInternalSchemaConverter` once RFC-104 retires `InternalSchema` |
 | | `FlinkTypeMapper` | `HoodieSchemaConverter` (Flink) |
 | | `HiveTypeMapper` | `HiveTypeUtils`; the type part of `HiveSchemaUtil` and the Flink catalog's `HiveSchemaUtils` |
 | | `TrinoTypeMapper` | column types read from HMS Hive type strings |
@@ -556,7 +557,10 @@ way, because the lookups are shared.
 
 * **RFC-99** defines `HoodieSchema`, the type set and the interoperability table; this RFC implements the mapping
   layer against that table and the types it left open.
-* **RFC-104** owns field ids and schema evolution; `SchemaTransformPlan` takes renames from field ids once they exist.
+* **RFC-104** owns field ids, schema evolution and retiring `InternalSchema`. This RFC prepares for it: expressions and
+  filter type mapping move from `InternalSchema` types to `HoodieSchemaType`, and callers go through the mappers, so
+  once field ids live on `HoodieSchema` the remaining users of `InternalSchema` are its evolution history and id-based
+  projection. `SchemaTransformPlan` takes renames from field ids once they exist.
 * **RFC-115** (Spark DataFrame-native write path) and **RFC-87** (Avro elimination for the Flink writer) touch the same
   write paths; their writers become users of `FileFormatIO`.
 
