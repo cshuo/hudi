@@ -439,6 +439,12 @@ A `FileFormats` registry keyed by `HoodieFileFormat` alone replaces `HoodieIOFac
 format. `HoodieFileFormat` gains an `AVRO` member for Avro data blocks; Parquet and HFile data blocks already hold
 Parquet and HFile bytes. A missing combination becomes a missing implementation rather than a runtime exception.
 
+`HoodieFileWriter` stays the API that write handles call, with `HoodieRecord` and the record key as today:
+`write(recordKey, record, schema)`, `writeWithMetadata`, `canWrite` and footer metadata. One implementation per format
+sits on top of `FileFormatIO`. It keeps today's key, bloom-filter and rollover bookkeeping, prepends meta fields as a
+view over the row (as `HoodieInternalRow` does for Spark today), and passes `record.asRow()` (section 3) to the format's
+`FileWriter`. Only the encoding below that line is shared across engines.
+
 #### 2.3 Engine fast paths
 
 Engine batch readers stay: Spark's vectorized Parquet and Arrow readers, Flink's vectorized Parquet reader and Trino's
@@ -532,11 +538,27 @@ follow-up, taken only if the rollout benchmarks show the copy matters.
   Parquet writer should write `RowData` without conversions). This is today's shape minus Avro; it keeps one writer per
   engine x format and the drift listed in the background. The copy a wrapper makes is the one engine writers already
   make (2.1).
+* **`HoodieRecord` at the format boundary.** Three shapes: (a) keep `HoodieRecord` at `HoodieFileWriter` and give
+  formats a `HoodieRow` view through `asRow()`, adopted (2.2, 3); (b) typed getters on `HoodieRecord` itself, rejected
+  for now because nested structs, arrays and map entries still need a row type with no key or location, and abstract
+  getters touch every `HoodieRecord` implementation, its Kryo serialization and payload code; (c) `HoodieRow` at the
+  handle API, unnecessary since handles need the key and metadata `HoodieRecord` carries.
 
 ### 3. HoodieRecord and KeyGenerator
 
 Engine-specific `HoodieRecord` implementations keep engine rows on the write path (RFC-46). Spark, Hive and Flink
-(`HoodieFlinkRecord`) now have them.
+(`HoodieFlinkRecord`) now have them. `HoodieRecord` stays the carrier at the writer boundary and gains one method, the
+view formats read:
+
+```java
+public abstract class HoodieRecord<T> ... {
+  /** The record's data as a HoodieRow; each engine record returns its write wrapper over getData(). */
+  public abstract HoodieRow asRow();   // HoodieSparkRecord: sparkRowWrapper.replace(getData())
+}
+```
+
+If `HoodieRecord` later gains typed getters of its own, it can implement `HoodieRow` and return itself from `asRow()`;
+no format changes.
 
 The base `KeyGenerator.getKey` takes an Avro `GenericRecord`; Spark (`SparkKeyGeneratorInterface`, over `InternalRow`)
 and Flink (`RowDataKeyGen`, over `RowData`) each added their own row-based variant beside it. One generic interface
