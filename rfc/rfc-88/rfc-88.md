@@ -135,7 +135,8 @@ lookups only. Everything else runs on each engine's own expression model:
   [RFC-104](https://github.com/apache/hudi/pull/18661).
 * The record merger API (RFC-101). Payload-based and custom record merging still convert records to Avro; removing that
   belongs to payload deprecation (RFC-97) and the merger API.
-* Replacing engine vectorized readers.
+* Replacing engine vectorized readers, or merging Flink's per-version copies of its vectorized Parquet reader; they
+  only move behind `VectorizedFileReader` (2.3).
 
 ## Design
 
