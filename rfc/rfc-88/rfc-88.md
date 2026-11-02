@@ -319,7 +319,7 @@ Each engine provides one wrapper per direction. Wrappers are reused across rows 
 `FlinkRowData` does), and so are the wrappers `getRow`, `getArray` and `getMap` return, one per nesting level.
 Conversions happen once per logical type inside them. For nanosecond TIMESTAMP (section 1), a nanosecond `long` would
 overflow outside roughly 1677-2262, so precision above 6 uses a two-part value, as Flink's `TimestampData` does. Read
-views do not copy values; `copy()` materializes a row when the engine buffers it:
+views do not copy values:
 
 ```java
 /** Write: an engine row seen as a HoodieRow. */
@@ -354,6 +354,13 @@ Today's engine writers already make these conversions at this boundary: the Parq
 decimals through `BigDecimal`. A wrapper moves those conversions rather than adding them, and an unscaled `long` decimal
 costs less. ORC, HFile and Avro block writers convert every row to a `GenericRecord` first, which a wrapper removes.
 What a wrapper adds is one interface call per field; the Parquet benchmark in rollout step 4 measures it.
+
+On the read side, a `HoodieRow` is backed by what the reader decoded. Row formats (Avro and HFile blocks) decode into one
+reused `GenericHoodieRow` per reader, an array of canonical values like Paimon's `GenericRow`. Columnar formats
+(Parquet, Lance, ORC) expose a row view over the decoded column batch at a row index, like Spark's `ColumnarRow`, so no
+row is materialized. Reuse is safe because a caller that keeps a row copies it: the file group reader's buffer does so
+on every insert (`seal` / `toBinary`), as it already does for the reused row Spark's Avro deserializer returns today,
+and `copy()` on a read view materializes a standalone engine row. Section 2.4 walks the full path.
 
 #### 2.2 One reader and writer per format
 
@@ -467,24 +474,32 @@ Result: the throwaway `GenericRecord` from step 4 disappears.
 Today:
 
 1. `HoodieAvroDataBlock.deserializeRecords(readerContext, content)`.
-2. `RecordIterator` calls `GenericDatumReader.read(BinaryDecoder)` and gets an `IndexedRecord`. **Full copy 1: the
+2. `RecordIterator` calls `GenericDatumReader.read(BinaryDecoder)` and gets a new `IndexedRecord`. **Full copy 1: the
    decode.**
-3. `RecordContext.convertAvroRecord(record)` produces an `InternalRow` (in `SparkFileFormatInternalRecordContext`).
-   **Full copy 2.**
-4. `projectLogBlockRecords`, then the file group reader merges against the base-file rows.
+3. `RecordContext.convertAvroRecord(record)` runs Spark's `AvroDeserializer` into a reused `InternalRow` (in
+   `SparkFileFormatInternalRecordContext`). **Full copy 2: a second decode.**
+4. `projectLogBlockRecords` passes rows through, projecting only when variant pushdown applies.
+5. `KeyBasedFileGroupRecordBuffer.processNextDataRecord` inserts the record with `BufferedRecord.toBinary`:
+   `UnsafeProjection` to `UnsafeRow`, then `seal` copies it (`InternalRow.copy()`). **Full copy 3, on every insert,
+   spilled or not.**
+6. The file group reader merges against the base-file rows.
 
 Proposed:
 
-1. The `AvroBinaryFormatIO` reader decodes `BinaryDecoder` fields straight into a `HoodieRow`. **Single full copy: the
-   decode.**
-2. `new HoodieSparkRow(hoodieRow)` exposes it as an `InternalRow` view, without copying.
-3. Same projection and merge.
+1. Same: `deserializeRecords`.
+2. The `AvroBinaryFormatIO` reader decodes `BinaryDecoder` fields straight into one reused `GenericHoodieRow`.
+   **Full copy 1: the only decode.**
+3. `HoodieSparkRow.replace(hoodieRow)` exposes it as an `InternalRow` view, without copying.
+4. Same projection.
+5. Same insert: `UnsafeProjection` reads through the view, then `seal` copies. **Full copy 2.**
+6. Same merge.
 
-Result: the `convertAvroRecord` copy from step 3 disappears.
+Result: the `IndexedRecord` and the second decode from step 3 disappear. Nothing new is materialized; the view adds one
+interface call per field while `UnsafeProjection` reads it. Bytes on disk are identical.
 
-Bytes on disk are identical. Because the FileGroupReader buffers log records by key for merging, the reader allocates a
-new `HoodieRow` and view per record rather than reusing one, so values are still copied once. Where an engine needs its
-own serialized form to spill buffered records (Spark's `UnsafeRow`), that conversion is outside this change.
+Reusing one `HoodieRow` is safe because step 5 copies every record it keeps. Decoding straight into an `UnsafeRowWriter`
+through a per-engine row builder (one per engine, not per engine x format) would also remove the step 5 copy; that is a
+follow-up, taken only if the rollout benchmarks show the copy matters.
 
 #### 2.5 Alternatives considered
 
