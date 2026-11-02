@@ -68,12 +68,12 @@ formats, and the copies disagree:
   `HiveSchemaUtils`. Trino builds its column types from the Hive type strings in the metastore rather than from
   `HoodieSchema`.
 * **No loss is declared anywhere.** Examples, all on master:
-  * Flink TINYINT / SMALLINT and Spark `ByteType` / `ShortType` map to `HoodieSchemaType.INT`. Flink's Parquet writer
-    derives its schema from `HoodieSchema`, so it writes plain INT32; Spark's row writer derives it from `StructType`, so
-    it annotates `ShortType` as `INT(16)` and throws on `ByteType`. Values are the same bytes, but the width is lost from
-    the table schema and the file schema depends on the writer. In Lance the storage width does too: Spark stores
-    `ShortType` as Arrow `Int16`, Flink stores the same column as `Int32`. RFC-99's mapping table says SMALLINT is
-    `INT32 + INTEGER(16)`.
+  * Flink TINYINT / SMALLINT and Spark `ByteType` / `ShortType` map to `HoodieSchemaType.INT`, so the width is lost
+    from the table schema and what reaches the file depends on the write path: Spark's `bulk_insert` writes INT32 +
+    `INT(16)` (Lance `Int16`), Spark's other paths write plain INT32 (Lance `Int32`), Spark's row writer throws on
+    `ByteType`, and Flink cannot write the column at all
+    ([apache/hudi#18974](https://github.com/apache/hudi/issues/18974)). RFC-99's mapping table says SMALLINT is
+    `INT32 + INTEGER(16)`. Section 5 traces it end to end.
   * UUID is declared `binary` by Hive sync and `STRING` by BigQuery sync.
   * BigQuery sync maps every DECIMAL to `NUMERIC`, which holds at most scale 9.
   * Hive sync stores VECTOR as `binary`.
@@ -179,8 +179,9 @@ Every mapper converts between `HoodieSchema` and exactly one other type system. 
    rule, nothing is lost on the way in and writers never need the engine schema.
 
 **Why writers take two schemas today.** Each carries something the other lacks. The engine schema has integer width:
-Spark's `ByteType` and `ShortType` become INT in `HoodieSchema`, so the row writer reads `ShortType` from `StructType` to
-write INT(16), while Flink, deriving from `HoodieSchema`, writes plain INT32. `HoodieSchema` has timestamp millis,
+Spark's `ByteType` and `ShortType` become INT in `HoodieSchema`, so only a writer that still holds the DataFrame's
+`StructType` (Spark's `bulk_insert`) writes INT(16); every path that rebuilds its schema from `HoodieSchema` writes plain
+INT32 (section 5). `HoodieSchema` has timestamp millis,
 decimal byte width, VECTOR, VARIANT and BLOB, which the Spark writer reads from it. Rule 5 moves the first group into
 `HoodieSchema`; the second is already there, and only the mappers read it. Writers then take `HoodieSchema` alone.
 
@@ -724,6 +725,137 @@ public interface StatsEvaluator {
 as `StructLike` (the `Evaluator` from the original proposal). Engine-native evaluators, such as a `SparkStatsEvaluator`
 over DataFrames, keep engine-specific execution where it is faster. Every engine gets the same index coverage either
 way, because the lookups are shared.
+
+### 5. Case study: one SMALLINT column
+
+One `SMALLINT` column, traced through master
+([b0d16f9](https://github.com/apache/hudi/tree/b0d16f94b3b5f4ce790a9a09e41ebf891b35a53e)) and through this design.
+
+**Today.** What lands in the file for the same column, by engine, operation and format:
+
+| Engine, operation | Parquet | Lance | ORC | Vortex | Avro log block (write version < 10) | Native log file (version 10) |
+|---|---|---|---|---|---|---|
+| Spark `bulk_insert` (row writer, the default) | INT32 + `INT(16)` | `Int16` | unsupported | unsupported | n/a | n/a |
+| Spark upsert, insert, compaction, clustering (SPARK record type) | INT32 | `Int32` | throws | 32-bit | Avro `int` | INT32 |
+| Spark upsert, insert, compaction, clustering (AVRO record type, the default) | INT32 | unsupported | `int` | unsupported | Avro `int` | INT32 |
+| Flink, any operation | fails | fails | unsupported | unsupported | fails | fails |
+
+Why each row differs:
+
+* `bulk_insert` keeps the DataFrame's own `StructType` (`HoodieDatasetBulkInsertHelper`), and
+  `HoodieInternalRowFileWriterFactory` passes it to the writers, so they see `ShortType`. That factory only writes
+  Parquet and Lance.
+* Every other Spark path rebuilds the `StructType` from `HoodieSchema` (`HoodieSparkFileWriterFactory`), after
+  `HoodieCreateRecordUtils` widens short to int, so the writers see `IntegerType`. That factory throws for ORC and HFile.
+* The AVRO record type converts rows to `GenericRecord` against the `HoodieSchema` Avro schema, where the column is
+  `int`; `HoodieAvroFileWriterFactory` writes Parquet, ORC and HFile, not Lance or Vortex.
+* Flink rebuilds a `RowType` from `HoodieSchema` (column `INT`) for every writer, and `ParquetRowDataWriter`,
+  `LanceRowDataWriter` and the Avro converter behind `HoodieFlinkRecord.getAvroBytes` call `getInt` on a field the row
+  holds as a short. `HoodieRowDataFileWriterFactory` writes only Parquet and Lance.
+* Clustering reads with the table schema (`int`), so it rewrites `bulk_insert`'s `INT(16)` files as plain INT32.
+
+Every path reads the column back as `int`. The production classes that decide what a SMALLINT becomes, each making
+part of the decision:
+
+Spark: schema conversion and row preparation
+
+1. `HoodieSparkSchemaConverters` (hudi-spark-client): maps `ByteType` / `ShortType` to INT, and INT back to
+   `IntegerType`.
+2. `HoodieInternalRowUtils` (hudi-spark-client): caches the `StructType` rebuilt from `HoodieSchema` that writers are
+   built with, and the row writer that rewrites short to int.
+3. `HoodieCreateRecordUtils` (hudi-spark-common): rewrites upsert and insert rows to that `StructType`, widening short
+   to int.
+4. `HoodieDatasetBulkInsertHelper` (hudi-spark-client): keeps the DataFrame's own `StructType` for `bulk_insert`.
+
+Spark: writer selection
+
+5. `HoodieSparkFileWriterFactory` (hudi-spark-client): rebuilds the `StructType` from `HoodieSchema` for Parquet,
+   Lance and Vortex; throws for ORC and HFile.
+6. `HoodieInternalRowFileWriterFactory` (hudi-spark-client): passes the DataFrame's `StructType` through; Parquet and
+   Lance only.
+
+Spark: format writers
+
+7. `HoodieRowParquetWriteSupport` (hudi-spark-client): `ShortType` to INT32 + `INT(16)` with `getShort`, `IntegerType`
+   to plain INT32, `ByteType` to `Unsupported type`.
+8. `HoodieSparkLanceWriter` (hudi-spark-client): hands its `StructType` to lance-spark.
+9. `LanceArrowUtils` (lance-spark): `ShortType` to Arrow `Int16`, `IntegerType` to `Int32`.
+10. `LanceArrowWriter` (lance-spark): writes the values into those vectors.
+11. `HoodieSparkVortexWriter` (hudi-spark-client, JDK 17 sources): writes from the rebuilt `StructType`.
+
+Spark: AVRO record type and Avro log blocks
+
+12. `HoodieSparkUtils` (hudi-spark-client): `createRdd` turns rows into `GenericRecord`s for the AVRO record type.
+13. `AvroConversionUtils` (hudi-spark-client): builds the row-to-Avro converter against the `HoodieSchema` Avro schema.
+14. `AvroSerializer` (four copies: hudi-spark3-common, hudi-spark4.0.x, hudi-spark4.1.x, hudi-spark4.2.x), reached
+    through `SparkAdapter.createAvroSerializer`: `ShortType` to Avro `int`.
+15. `HoodieSparkRecord` (hudi-spark-client): `getAvroBytes` for Avro log blocks under the SPARK record type.
+
+Shared Avro writers
+
+16. `HoodieAvroFileWriterFactory` (hudi-hadoop-common): Parquet, ORC and HFile; not Lance or Vortex.
+17. `HoodieAvroWriteSupport` (hudi-hadoop-common): the parquet-avro write support.
+18. `AvroSchemaConverterWithTimestampNTZ` (hudi-hadoop-common): Avro `int` to Parquet INT32.
+19. `AvroOrcUtils` (hudi-hadoop-common): Avro `int` to ORC `int`.
+
+Flink
+
+20. `HoodieSchemaConverter` (hudi-flink-client): maps `TINYINT` / `SMALLINT` to INT, and INT back to `INT`.
+21. `HoodieRowDataFileWriterFactory` (hudi-flink-client): Parquet and Lance only.
+22. `RowDataParquetWriteSupport` (hudi-flink-client): builds the file schema from `HoodieSchema`.
+23. `ParquetSchemaConverter` (hudi-flink-client): converts through a `RowType`, so plain INT32; its SMALLINT branch is
+    unreachable.
+24. `ParquetRowDataWriter` (hudi-flink-client): its `IntWriter` calls `getInt` on a field the row holds as a short.
+25. `HoodieFlinkLanceArrowUtils` (hudi-flink-client): converts through a `RowType`, so `Int32`; its SMALLINT branch is
+    unreachable.
+26. `LanceRowDataWriter` (hudi-flink-client): `getInt` on a short; its `SmallIntWriter` is unreachable.
+27. `HoodieFlinkRecord` (hudi-flink-client): `getAvroBytes` for Avro log blocks.
+28. `RowDataQueryContexts` (hudi-flink-client): builds the row-to-Avro converter from a `RowType` rebuilt from
+    `HoodieSchema`.
+29. `RowDataToAvroConverters` (hudi-flink-client): `getInt` on a short.
+
+Catalog
+
+30. `HiveSchemaUtil` (hudi-hive-sync): INT to `int`.
+
+That is 30 classes in nine Hudi modules plus lance-spark, three of them with unreachable SMALLINT branches, and the
+answer also depends on which `StructType` each Spark operation hands down. `TestParquetSchemaConverter` normalizes
+SMALLINT to INT before comparing, so the tests encode the loss.
+[apache/hudi#18974](https://github.com/apache/hudi/issues/18974) tracks it and names adding the type to `HoodieSchema`
+as the fix consistent with RFC-99.
+
+**With this design.**
+
+1. Write, (1) engine to `HoodieSchema`: `SparkTypeMapper` maps `ShortType`, and `FlinkTypeMapper` maps `SMALLINT`, to
+   INT16 (rule 5). The table schema persists it as Avro `int` with an `int16` logical-type property; older readers see
+   `int`.
+2. Every write operation builds the file schema from the table schema alone: `bulk_insert`, upsert, compaction and
+   clustering take the same path through `FileFormatIO`.
+3. Write, (2) `HoodieSchema` to format: `ParquetSchemaMapper` maps INT16 to INT32 + `INT(16)`, `ArrowSchemaMapper` to
+   `Int16`, `OrcSchemaMapper` to `short`. One case in each mapper.
+4. Values: each wrapper picks its getter from the engine's own field type, so `SparkRowWrapper.getInt` and
+   `FlinkRowWrapper.getInt` call `getShort` for this field, and the format's INT16 value writer calls `row.getInt(i)`.
+   No path calls `getInt` on a short.
+5. Read, (3) format to `HoodieSchema`: `ParquetSchemaMapper.fromPhysicalSchema` maps INT32 + `INT(16)` to INT16; plain
+   INT32 files written before INT16 resolve through the hint.
+6. Read, (4) `HoodieSchema` to engine and catalog: Spark gets `ShortType`, Flink `SMALLINT`, Hive sync `smallint`.
+
+Existing tables keep their INT columns as INT, since an INT in an old schema may be a real INT or a widened SMALLINT
+(#18974); every path then writes plain INT32 for them, `bulk_insert` included, because every path writes the table's
+type. Tables created after INT16 lands get INT16.
+
+"What is a SMALLINT on disk" then has one answer per format, in one place: the INT16 case of each `FormatSchemaMapper`,
+checked for every engine by the shared test kit with RFC-99's table as the expected output. The 30 classes above become
+one INT16 case in each of:
+
+1. `SparkTypeMapper`: `ShortType` to and from INT16.
+2. `FlinkTypeMapper`: `SMALLINT` to and from INT16.
+3. `HiveTypeMapper`: INT16 to `smallint`, used by `HiveCatalogRenderer`.
+4. `ParquetSchemaMapper`: INT16 to and from INT32 + `INT(16)`.
+5. `ArrowSchemaMapper`: INT16 to and from `Int16` (Lance, Vortex).
+6. `OrcSchemaMapper`: INT16 to and from `short`.
+7. `AvroSchemaMapper`: INT16 to Avro `int` with the `int16` property.
+8. `SparkRowWrapper` / `HoodieSparkRow` and `FlinkRowWrapper` / `HoodieFlinkRow`: `getShort` behind `getInt`, and back.
 
 ### Relationship to other RFCs
 
