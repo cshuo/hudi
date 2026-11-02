@@ -161,10 +161,12 @@ Every mapper converts between `HoodieSchema` and exactly one other type system. 
 4. Every mapper passes the same shared test kit, and RFC-99's interoperability table is its expected output.
 5. Types are added to `HoodieSchema` first, then to every mapper. This rule is not negotiable. Two tiers:
    * Anything that affects values, physical layout, comparison or ordering (integer width, signedness, precision,
-     time zone semantics, collation) is a `HoodieSchemaType`, which every mapper must declare. An engine type that needs
-     one and has none fails fast in `fromTypeSystem` instead of widening.
-   * Details that affect none of these (CHAR / VARCHAR length, engine column options) are per-field properties on
+     time zone semantics, collation, CHAR padding) is a `HoodieSchemaType`, which every mapper must declare. An engine
+     type that needs one and has none fails fast in `fromTypeSystem` instead of widening.
+   * Details that affect none of these (VARCHAR length, engine column options) are per-field properties on
      `HoodieSchema` (`HoodieSchemaField.getProp` / `addProp`). Every mapper preserves them and may ignore them.
+     VARCHAR(n) qualifies because its values, bytes and ordering are those of STRING; only the write-time length check
+     is engine-specific. CHAR(n) does not: Spark and Hive pad it and compare it ignoring trailing spaces.
 
    Storing a semantic distinction in a property of a wider type (SMALLINT as INT32 plus an engine annotation) is not
    allowed: a property one mapper reads and another ignores is how Spark and Flink write the same SMALLINT column
@@ -287,9 +289,11 @@ Mappers are discovered with `ServiceLoader` through a `SchemaMappers` registry, 
 without `hudi-common` depending on them.
 
 The logical types RFC-99 specified but did not implement (TINYINT, SMALLINT, unsigned integers, FLOAT16, nanosecond
-TIMESTAMP, LARGE_STRING, LARGE_BINARY, DATE64, DURATION, DICTIONARY) land here, each together with its declaration in every mapper and its rows
-in the shared tests. A type is not done until every mapper declares it. Each new type also specifies how it persists in
-the Avro JSON schema (a logical-type property old readers ignore) so older readers degrade to the base type.
+TIMESTAMP, LARGE_STRING, LARGE_BINARY, DATE64, DURATION, DICTIONARY) land here, each together with its declaration in
+every mapper and its rows in the shared tests. CHAR(n) is added the same way, though RFC-99 did not specify it; until it
+lands, CHAR keeps today's mapping to STRING with padded values, the one exception to rule 5's fail-fast. A type is not
+done until every mapper declares it. Each new type also specifies how it persists in the Avro JSON schema (a
+logical-type property old readers ignore) so older readers degrade to the base type.
 
 ### 2. Reader / writer
 
