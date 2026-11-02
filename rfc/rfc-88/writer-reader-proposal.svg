@@ -126,7 +126,7 @@
 <path class="edge" d="M1024,606 L1024,564" marker-end="url(#arr)"/>
 <g class="node format"><rect class="box" x="50" y="606" width="1098" height="136" rx="8"/><text class="tc" x="62" y="626">interface FileFormatIO</text><text class="code" x="62" y="644">HoodieFileFormat format();</text><text class="code" x="62" y="660">FileWriter newWriter(WriteTarget target, HoodieSchema schema, WriteOptions opts);   // StoragePath or OutputStream</text><text class="code" x="62" y="676">FileReader newReader(InputFile file, HoodieSchema required, ReadOptions opts);</text><text class="code" x="62" y="692">interface FileWriter extends Closeable { void write(HoodieRow row); long bytesWritten(); }</text><text class="code" x="62" y="708">interface FileReader extends Closeable { HoodieSchema fileSchema(); ClosableIterator&lt;HoodieRow&gt; read(SchemaTransformPlan p, Option&lt;Expression&gt; f); }</text><text class="cmt" x="62" y="724">// inside each format: one StructWriter / StructReader over HoodieRow, one ValueWriter / ValueReader per field</text></g>
 <text class="tag" x="1134" y="626">hudi-common</text>
-<g class="node persist"><rect class="box" x="1180" y="606" width="390" height="136" rx="8"/><text class="t" x="1192" y="626">Unchanged</text><text class="d" x="1192" y="644">Data bytes: unchanged; existing files are never</text><text class="d" x="1192" y="659">rewritten; Avro / HFile log blocks keep their</text><text class="d" x="1192" y="674">encoding.</text><text class="d" x="1192" y="689">Merging: FileGroupReader + RecordContext;</text><text class="d" x="1192" y="704">projectRecord(plan).</text></g>
+<g class="node persist"><rect class="box" x="1180" y="606" width="390" height="136" rx="8"/><text class="t" x="1192" y="626">Unchanged</text><text class="d" x="1192" y="644">Data bytes and log block encodings: unchanged;</text><text class="d" x="1192" y="659">existing files are never rewritten.</text><text class="d" x="1192" y="674">Writer API: HoodieFileWriter + HoodieRecord;</text><text class="d" x="1192" y="689">formats read record.asRow().</text><text class="d" x="1192" y="704">Merging: FileGroupReader + RecordContext.</text></g>
 <g class="node format"><rect class="box" x="50" y="784" width="240" height="112" rx="8"/><text class="tc" x="62" y="804">ParquetFileFormatIO</text><text class="d" x="62" y="822">replaces HoodieAvroParquetWriter,</text><text class="d" x="62" y="837">HoodieSparkParquetWriter, Internal-</text><text class="d" x="62" y="852">RowParquetWriter, RowDataParquetWriter</text><text class="d" x="62" y="867">and their 3 write supports</text></g>
 <path class="real" d="M170,784 L200,742" marker-end="url(#tri)"/>
 <g class="node format"><rect class="box" x="306" y="784" width="240" height="112" rx="8"/><text class="tc" x="318" y="804">LanceFileFormatIO</text><text class="d" x="318" y="822">replaces HoodieSparkLanceWriter,</text><text class="d" x="318" y="837">HoodieRowDataLanceWriter and</text><text class="d" x="318" y="852">both Lance readers</text></g>
@@ -142,9 +142,9 @@
 <text class="ph" x="50" y="938">Example flows</text>
 <text class="flow-h" x="50" y="974">Spark / Flink write</text>
 <g class="engine"><rect class="box" x="190" y="956" width="110" height="28" rx="6"/></g>
-<text class="chip" x="245.0" y="974">InternalRow</text>
+<text class="chip" x="245.0" y="974">HoodieRecord</text>
 <path class="edge" d="M300,970 L470,970" marker-end="url(#arr)"/>
-<text class="lbl" x="385" y="964" text-anchor="middle">SparkRowWrapper.replace</text>
+<text class="lbl" x="385" y="964" text-anchor="middle">record.asRow()</text>
 <g class="boundary"><rect class="box" x="470" y="956" width="110" height="28" rx="6"/></g>
 <text class="chip" x="525.0" y="974">HoodieRow</text>
 <path class="edge" d="M580,970 L820,970" marker-end="url(#arr)"/>
