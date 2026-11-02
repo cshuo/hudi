@@ -159,8 +159,17 @@ Every mapper converts between `HoodieSchema` and exactly one other type system. 
 3. `fromX(toX(s))` equals `s` for every `NATIVE` type. For `LOSSY` types, the hint (the table schema) or a marker
    stored in the target restores the type, as described below.
 4. Every mapper passes the same shared test kit, and RFC-99's interoperability table is its expected output.
-5. Types are added to `HoodieSchema` first, then to every mapper. An engine type with no `HoodieSchema` type fails fast
-   in `fromTypeSystem` instead of widening, so nothing is lost on the way in and writers never need the engine schema.
+5. Types are added to `HoodieSchema` first, then to every mapper. This rule is not negotiable. Two tiers:
+   * Anything that affects values, physical layout, comparison or ordering (integer width, signedness, precision,
+     time zone semantics, collation) is a `HoodieSchemaType`, which every mapper must declare. An engine type that needs
+     one and has none fails fast in `fromTypeSystem` instead of widening.
+   * Details that affect none of these (CHAR / VARCHAR length, engine column options) are per-field properties on
+     `HoodieSchema` (`HoodieSchemaField.getProp` / `addProp`). Every mapper preserves them and may ignore them.
+
+   Storing a semantic distinction in a property of a wider type (SMALLINT as INT32 plus an engine annotation) is not
+   allowed: a property one mapper reads and another ignores is how Spark and Flink write the same SMALLINT column
+   differently today, and every such property becomes an unwritten type that each new mapper must rediscover. With this
+   rule, nothing is lost on the way in and writers never need the engine schema.
 
 **Why writers take two schemas today.** Each carries something the other lacks. The engine schema has integer width:
 Spark's `ByteType` and `ShortType` become INT in `HoodieSchema`, so the row writer reads `ShortType` from `StructType` to
@@ -189,7 +198,8 @@ Sync:                   HoodieSchema --(5)--> Catalog
 column in this order:
 
 1. `NATIVE`: the target's own type is exact, such as Parquet INT(16) or TIMESTAMP(MILLIS).
-2. `LOSSY` with a hint: the hint is the table schema, which Hudi already persists as `HoodieSchema` JSON: `schema` in
+2. `LOSSY` with a hint: the hint is the table schema, including its per-field properties, which Hudi already persists
+   as `HoodieSchema` JSON: `schema` in
    each commit's metadata, `hoodie.table.create.schema` in `hoodie.properties`, the `SCHEMA` header of each log block,
    and `hoodie.avro.schema` in the write config during a write. It never crosses a lossy arrow, so it restores the
    exact type. Every Hudi read and write has one.
