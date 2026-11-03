@@ -416,7 +416,7 @@
   <text class="ph" x="66" y="1410">Contract</text>
   <text class="pn" x="66" y="1434">1</text>
   <text class="p" x="82" y="1434">HoodieSchema is the only logical type system. Type systems and physical</text>
-  <text class="p" x="82" y="1448">schemas derive from it, never from each other.</text>
+  <text class="p" x="82" y="1448">schemas derive from it, never from each other. New types land here first.</text>
   <text class="pn" x="66" y="1464">2</text>
   <text class="p" x="82" y="1464">Physical layout comes only from toPhysicalSchema(). Format writers and</text>
   <text class="p" x="82" y="1478">readers (RFC-88 section 2) are built from that physical schema.</text>
@@ -424,8 +424,8 @@
   <text class="p" x="82" y="1494">Every mapper declares NATIVE, LOSSY (with reason) or UNSUPPORTED per type</text>
   <text class="p" x="82" y="1508">and options. Writing an UNSUPPORTED type fails fast; no silent fallback.</text>
   <text class="pn" x="66" y="1524">4</text>
-  <text class="p" x="82" y="1524">fromTypeSystem(toTypeSystem(s)) equals s for every NATIVE type. The hint</text>
-  <text class="p" x="82" y="1538">resolves types a system cannot express (BLOB, VECTOR, UUID).</text>
+  <text class="p" x="82" y="1524">LOSSY drops type identity, never values. The hint (table schema) or a</text>
+  <text class="p" x="82" y="1538">hudi_type marker in the target restores it; round trips are exact.</text>
   <text class="pn" x="66" y="1554">5</text>
   <text class="p" x="82" y="1554">Types turn lossy only inside a TypeSystemMapper. A CatalogSchemaRenderer</text>
   <text class="p" x="82" y="1568">adds table-level rules (partition columns, comments, DDL, diff), nothing else.</text>

@@ -174,7 +174,7 @@
 <g class="node format"><rect class="box" x="1360" y="342" width="200" height="34" rx="8"/><text class="t" x="1372" y="362"></text></g>
 <text class="c" x="1372" y="364">AvroBlockStructWriter</text>
 <path class="edge" d="M1280,340 L1360,359" marker-end="url(#arr)"/>
-<text class="p" x="846" y="396">Engines write one wrapper each (plus a read view); formats write one struct</text>
+<text class="p" x="846" y="396">Engines write one wrapper each (plus a builder and view); formats write one struct</text>
 <text class="p" x="846" y="413">writer each. Any pair works at runtime: the wrapper hands its row to the writer.</text>
 <text class="p" x="846" y="430">Precedent: Paimon (InternalRow, FlinkRowWrapper / FlinkRowData).</text>
 <g class="panel"><rect x="50" y="470" width="1520" height="236" rx="8"/></g>

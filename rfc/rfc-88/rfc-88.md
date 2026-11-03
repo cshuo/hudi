@@ -455,7 +455,10 @@ public interface FileWriter extends Closeable {
 
 public interface FileReader extends Closeable {
   HoodieSchema fileSchema();
-  ClosableIterator<HoodieRow> read(SchemaTransformPlan plan, Option<Expression> filter);
+  /** Decodes each row into the engine's own row through its builder. */
+  <R> ClosableIterator<R> read(SchemaTransformPlan plan, Option<Expression> filter, HoodieRowBuilder<R> builder);
+  /** Columnar formats: transient views over the decoded batch, wrapped by the engine's read view. */
+  ClosableIterator<HoodieRow> readViews(SchemaTransformPlan plan, Option<Expression> filter);
 }
 ```
 
@@ -481,8 +484,9 @@ final class ParquetStructWriter implements FileWriter {
 }
 ```
 
-Readers mirror this: a format's struct reader fills a `HoodieRow` from the file and applies the `SchemaTransformPlan`
-(file schema to required schema: keep, rename, promote, fill default, drop) and an optional filter.
+Readers mirror this: a format's struct reader decodes into the engine's builder (or, for columnar formats, exposes
+views over the batch) and applies the `SchemaTransformPlan` (file schema to required schema: keep, rename, promote, fill
+default, drop) and an optional filter.
 
 | Implementation | Replaces |
 |---|---|

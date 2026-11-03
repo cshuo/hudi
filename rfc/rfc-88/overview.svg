@@ -172,7 +172,7 @@
 <path class="edge" d="M690,702 L890,702" marker-end="url(#arr)"/>
 <text class="lbl" x="790.0" y="696" text-anchor="middle">SchemaTransformPlan</text>
 <path class="edge" d="M1060,702 L1230,702" marker-end="url(#arr)"/>
-<text class="lbl" x="1145.0" y="696" text-anchor="middle">HoodieRow -&gt; engine view</text>
+<text class="lbl" x="1145.0" y="696" text-anchor="middle">engine builder or view</text>
 <text class="m" x="1230" y="732">fast path: VectorizedFileReader, same plan</text>
 <rect class="lane" x="50" y="750" width="1520" height="58" rx="8"/>
 <text class="pn" x="66" y="772">Filter / prune</text>
