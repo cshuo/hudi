@@ -306,12 +306,26 @@ logical-type property old readers ignore) so older readers degrade to the base t
 
 ![Proposed: file reader and writer interfaces](writer-reader-proposal.svg)
 
-#### 2.1 One row type for formats, wrapped by engines
+What the reader / writer layer has to guarantee, whatever the engine, operation or format:
 
-Formats read and write a single row type, `HoodieRow`, and each engine wraps its own rows in both directions. This is the
-model Apache Paimon uses (`InternalRow`, with `FlinkRowWrapper` and `FlinkRowData` as the Flink adapters). It grows the
-`StructLike` interface that `hudi-common` already uses for metadata-table index evaluation into the read / write row,
-with typed getters so values are not boxed.
+1. **The table schema decides the file.** Every write builds its file schema from the table's `HoodieSchema` through
+   the format's `FormatSchemaMapper`. No writer reads an engine schema to decide what lands on disk, so `bulk_insert`
+   and upsert, or Spark and Flink, cannot write the same column differently (section 5 shows what happens today).
+2. **Each decision is made once.** How a type is stored in a format lives in that format's mapper and writer. How an
+   engine reads or builds its own rows lives in that engine's wrapper and builder. Neither is repeated per engine and
+   format pair.
+3. **Behaviour is checked, not assumed.** Shared tests run every engine against every format, with RFC-99's table as
+   the expected result.
+4. **Nothing new to own.** The boundary between engine code and format code is a transient view. Rows that are kept,
+   spilled or shuffled stay engine rows, with the engine's serializers and memory accounting.
+
+#### 2.1 One boundary between engine code and format code
+
+Properties 1 and 2 need one boundary that format code reads and writes through, and that every engine implements for
+its own rows. Formats read values through `HoodieRow` (writes) and write values through `HoodieRowBuilder` (reads). This
+is the model Apache Paimon uses (`InternalRow`, with `FlinkRowWrapper` and `FlinkRowData` as the Flink adapters); it
+grows the `StructLike` interface that `hudi-common` already uses for metadata-table index evaluation, with typed getters
+so values are not boxed. A consequence is one adapter per engine and one encoder per format, instead of one per pair:
 
 ![Engines x formats: N x M classes, or N + M through one row type](engines-x-formats.svg)
 
