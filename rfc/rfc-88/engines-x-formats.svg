@@ -151,7 +151,7 @@
 <text class="p" x="66" y="413">and each format's write logic is subclassed once per engine.</text>
 <text class="p" x="66" y="430">Today's code is this grid with holes and Avro detours (writer-reader-today.svg).</text>
 <g class="sec"><rect x="830" y="108" width="740" height="32" rx="8"/><text x="846" y="129">Through one row type: N + M = 8 classes</text></g>
-<text class="tag" x="1554" y="129">Paimon's InternalRow model; this RFC</text>
+<text class="tag" x="1554" y="129">one typed-getter boundary; this RFC</text>
 <g class="node boundary thick"><rect class="box" x="1130" y="196" width="150" height="166" rx="8"/><text class="tc" x="1142" y="216">HoodieRow</text><text class="d" x="1142" y="234">typed getters,</text><text class="d" x="1142" y="249">canonical values</text><text class="d" x="1142" y="264"></text><text class="d" x="1142" y="279">the only row type</text><text class="d" x="1142" y="294">formats see</text></g>
 <g class="node engine"><rect class="box" x="850" y="196" width="200" height="50" rx="8"/><text class="tc" x="862" y="216">SparkRowWrapper</text><text class="d" x="862" y="234">Spark rows in</text></g>
 <path class="edge" d="M1050,221 L1130,226" marker-end="url(#arr)"/>
@@ -176,7 +176,7 @@
 <path class="edge" d="M1280,340 L1360,359" marker-end="url(#arr)"/>
 <text class="p" x="846" y="396">Engines write one wrapper each (plus a builder and view); formats write one struct</text>
 <text class="p" x="846" y="413">writer each. Any pair works at runtime: the wrapper hands its row to the writer.</text>
-<text class="p" x="846" y="430">Precedent: Paimon (InternalRow, FlinkRowWrapper / FlinkRowData).</text>
+<text class="p" x="846" y="430">Precedents: Spark's SpecializedGetters, Paimon's engine adapters.</text>
 <g class="panel"><rect x="50" y="470" width="1520" height="236" rx="8"/></g>
 <text class="ph" x="66" y="494">What each shape costs</text>
 <text class="pn" x="66" y="520"></text>

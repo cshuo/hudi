@@ -15,7 +15,7 @@
   limitations under the License.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1620 1370" width="1620" height="1370" class="viz-root" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
-<title>Proposed: file reader / writer interfaces (RFC-88 section 2, Paimon model)</title>
+<title>Proposed: file reader / writer interfaces (RFC-88 section 2)</title>
 <style>
     .viz-root { color-scheme: light; --surface-1: #fcfcfb; --lane: #0b0b0b; --text-primary: #0b0b0b;
       --text-secondary: #52514e; --text-muted: #8a8984; --boundary: #2a78d6; --engine: #eb6834;
@@ -84,8 +84,8 @@
 <marker id="tri" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto"><path d="M1,1 L11,6 L1,11 z" class="tri"/></marker>
 </defs>
 <rect class="bg" x="0" y="0" width="1620" height="1370"/>
-<text class="h1" x="50" y="36">Proposed: file reader / writer interfaces (RFC-88 section 2, Paimon model)</text>
-<text class="sub" x="50" y="58">Formats read and write one Hudi row type; each engine wraps its own rows. Names are placeholders. Compare writer-reader-today.svg.</text>
+<text class="h1" x="50" y="36">Proposed: file reader / writer interfaces (RFC-88 section 2)</text>
+<text class="sub" x="50" y="58">Formats go through one boundary: HoodieRow on writes, HoodieRowBuilder or a batch view on reads. Names are placeholders. Compare writer-reader-today.svg.</text>
 <rect x="50" y="76" width="14" height="14" rx="3" fill="var(--boundary)" fill-opacity="0.12" stroke="var(--boundary)" stroke-width="2"/>
 <text class="legend" x="70" y="87">Hudi shared (hudi-common)</text>
 <rect x="261" y="76" width="14" height="14" rx="3" fill="var(--engine)" fill-opacity="0.12" stroke="var(--engine)" stroke-width="2"/>
@@ -166,7 +166,7 @@
 <text class="lbl" x="700" y="1014" text-anchor="middle">HoodieFlinkRow.replace</text>
 <g class="engine"><rect class="box" x="820" y="1006" width="110" height="28" rx="6"/></g>
 <text class="chip" x="875.0" y="1024">RowData view</text>
-<text class="m" x="946" y="1024">a view, not a copy (Paimon's FlinkRowData)</text>
+<text class="m" x="946" y="1024">a view over the column batch, not a copy</text>
 <text class="flow-h" x="50" y="1074">Log block write</text>
 <g class="engine"><rect class="box" x="190" y="1056" width="110" height="28" rx="6"/></g>
 <text class="chip" x="245.0" y="1074">Spark rows</text>
@@ -183,7 +183,7 @@
 <text class="ph" x="66" y="1134">Design rules</text>
 <g class="badge"><circle cx="76" cy="1154" r="9"/><text x="76" y="1158">1</text></g>
 <text class="p" x="92" y="1158">Formats see only HoodieRow and HoodieRowBuilder; each engine implements both. N + M classes,</text>
-<text class="p" x="92" y="1173">as in Paimon; Iceberg's per (format, engine) FormatModel registry stays N x M by design.</text>
+<text class="p" x="92" y="1173">engine-owned read fast paths stay beside it; Iceberg's per-engine writers stay N x M.</text>
 <g class="badge"><circle cx="76" cy="1197" r="9"/><text x="76" y="1201">2</text></g>
 <text class="p" x="92" y="1201">Getters are typed and return canonical values (UTF-8 bytes, unscaled decimals, timestamps in</text>
 <text class="p" x="92" y="1216">the column's unit): each conversion is written once per logical type, not per engine x format.</text>

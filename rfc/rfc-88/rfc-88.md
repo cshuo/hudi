@@ -322,10 +322,16 @@ What the reader / writer layer has to guarantee, whatever the engine, operation 
 #### 2.1 One boundary between engine code and format code
 
 Properties 1 and 2 need one boundary that format code reads and writes through, and that every engine implements for
-its own rows. Formats read values through `HoodieRow` (writes) and write values through `HoodieRowBuilder` (reads). This
-is the model Apache Paimon uses (`InternalRow`, with `FlinkRowWrapper` and `FlinkRowData` as the Flink adapters); it
-grows the `StructLike` interface that `hudi-common` already uses for metadata-table index evaluation, with typed getters
-so values are not boxed. A consequence is one adapter per engine and one encoder per format, instead of one per pair:
+its own rows. Formats read values through `HoodieRow` (writes) and write values through `HoodieRowBuilder` (reads). A
+typed-getter boundary is a common shape: Spark's own Parquet and Arrow writers read through `SpecializedGetters`, which
+both `InternalRow` and `ArrayData` implement; Iceberg's generic data path uses `StructLike`; Paimon's engine adapters
+(`FlinkRowWrapper`, `FlinkRowData`) wrap its `InternalRow`. This RFC takes only that boundary, not Paimon's binary rows,
+memory segments, serializers or format readers (2.5). It grows the `StructLike` interface that `hudi-common` already uses
+for metadata-table index evaluation, with typed getters so values are not boxed.
+
+`HoodieRow` replaces only code Hudi owns: every writer, and Hudi's own readers. Engine-owned read fast paths stay beside
+it (2.3), bound to the same physical schema and plan. A consequence is one adapter per engine and one encoder per
+format, instead of one per pair:
 
 ![Engines x formats: N x M classes, or N + M through one row type](engines-x-formats.svg)
 
@@ -353,8 +359,8 @@ public interface HoodieRow {
 }
 ```
 
-Each engine provides one wrapper per direction. Wrappers are reused across rows (`replace(row)`, as Paimon's
-`FlinkRowData` does), and so are the wrappers `getRow`, `getArray` and `getMap` return, one per nesting level.
+Each engine provides a write wrapper, a read builder and a read view. Wrappers are reused across rows (`replace(row)`),
+and so are the wrappers `getRow`, `getArray` and `getMap` return, one per nesting level.
 Conversions happen once per logical type inside them. For nanosecond TIMESTAMP (section 1), a nanosecond `long` would
 overflow outside roughly 1677-2262, so precision above 6 uses a two-part value, as Flink's `TimestampData` does. Read
 views do not copy values:
@@ -437,6 +443,13 @@ What each getter costs, for the write wrappers and read views alike:
 | `getBinaryRef` | fills a reused `BinaryRef` with the buffer, offset and length, borrowed | none: Spark's `UTF8String` and column-batch views hand over their own buffer |
 | `getBinary`, `getDecimalUnscaledBytes` | `byte[]`, borrowed | the same copy today's writers make (`getUTF8String(i).getBytes()`, `toBytes()`, `toUnscaledBytes()`); a copy when the value is a slice of a larger buffer, which is why format writers use `getBinaryRef` |
 | `getRow`, `getArray`, `getMap` | a view, reused per nesting level, borrowed | none per value |
+
+Read cost on Hudi's own readers: no serialization and no extra copy of the row, since row formats decode straight into
+the engine's row and columnar views read the batch in place. What remains is call overhead: one interface call per field
+into a builder, and two per field for a columnar view wrapped by an engine view (`HoodieSparkRow.getInt` calls the
+`HoodieRow` view, which reads the column vector), against one in Spark's `ColumnarRow`. Against the Avro-based readers
+these replace, reads still get faster (2.4). Lance has per-engine readers today, so it is the case to benchmark; a pair
+that regresses keeps its existing reader.
 
 #### 2.2 One reader and writer per format
 
@@ -610,6 +623,16 @@ Bytes on disk are identical. Reusing one `UnsafeRow` is safe because step 4 copi
   Parquet writer should write `RowData` without conversions). This is today's shape minus Avro; it keeps one writer per
   engine x format, with the maintenance cost above. The copy a wrapper makes is the one engine writers already make
   (2.1).
+* **Paimon's full data model.** Paimon began as Flink Table Store and carries Flink's data layer: `InternalRow` is
+  based on Flink's code, with `BinaryRow`, `BinaryString`, `MemorySegment` memory management, `InternalRowSerializer`,
+  and its own Parquet and ORC readers and column vectors. An LSM store needs that, since it sorts, spills and stores
+  rows in its own binary form and every engine reads through its readers, which then have to keep pace with each
+  engine's own. This RFC adopts only the adapter shape:
+  * Typed getters and engine adapters: adopted (`HoodieRow`, wrappers, views).
+  * Binary rows, memory segments, serializers: not adopted. Rows that are kept are engine rows (`BufferedRecord` /
+    `RecordContext`), and `HoodieRow` is transient.
+  * Format readers that every engine reads through: not adopted. Engine vectorized and native row readers stay (2.3),
+    and readers decode into the engine's own row through its builder.
 * **`HoodieRecord` at the format boundary.** Three shapes: (a) keep `HoodieRecord` at `HoodieFileWriter` and give
   formats a `HoodieRow` view through `asRow()`, adopted (2.2, 3); (b) typed getters on `HoodieRecord` itself, rejected
   for now because nested structs, arrays and map entries still need a row type with no key or location, and abstract
