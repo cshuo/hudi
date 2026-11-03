@@ -1,0 +1,212 @@
+<!--
+  Licensed to the Apache Software Foundation (ASF) under one or more
+  contributor license agreements.  See the NOTICE file distributed with
+  this work for additional information regarding copyright ownership.
+  The ASF licenses this file to You under the Apache License, Version 2.0
+  (the "License"); you may not use this file except in compliance with
+  the License.  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1620 1370" width="1620" height="1370" class="viz-root" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+<title>Proposed: file reader / writer interfaces (RFC-88 section 2)</title>
+<style>
+    .viz-root { color-scheme: light; --surface-1: #fcfcfb; --lane: #0b0b0b; --text-primary: #0b0b0b;
+      --text-secondary: #52514e; --text-muted: #8a8984; --boundary: #2a78d6; --engine: #eb6834;
+      --format: #1baf7a; --persist: #8a8984; --persist-fill: #f0efec; }
+    @media (prefers-color-scheme: dark) {
+      .viz-root { color-scheme: dark; --surface-1: #1a1a19; --lane: #f0efec; --text-primary: #f0efec;
+        --text-secondary: #c3c2b7; --text-muted: #8a8984; --boundary: #3987e5; --engine: #d95926;
+        --format: #199e70; --persist: #8a8984; --persist-fill: #383835; }
+    }
+    .bg { fill: var(--surface-1); }
+    .h1 { fill: var(--text-primary); font-size: 20px; font-weight: 700; }
+    .sub { fill: var(--text-secondary); font-size: 12.5px; }
+    .legend { fill: var(--text-secondary); font-size: 12px; }
+    .lane { fill: var(--lane); fill-opacity: 0.035; }
+    .sep { stroke: var(--text-muted); stroke-opacity: 0.35; stroke-width: 1; }
+    .row-label { fill: var(--text-muted); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; }
+    .row-sub { fill: var(--text-muted); font-size: 11px; }
+    .col-h { fill: var(--text-primary); font-size: 14px; font-weight: 700; text-anchor: middle; }
+    .sec rect { fill: var(--lane); fill-opacity: 0.06; }
+    .sec text { fill: var(--text-primary); font-size: 13.5px; font-weight: 700; }
+    .boundary rect.box { fill: var(--boundary); fill-opacity: 0.12; stroke: var(--boundary); stroke-width: 2; }
+    .engine rect.box { fill: var(--engine); fill-opacity: 0.12; stroke: var(--engine); stroke-width: 2; }
+    .format rect.box { fill: var(--format); fill-opacity: 0.12; stroke: var(--format); stroke-width: 2; }
+    .persist rect.box { fill: var(--persist-fill); stroke: var(--persist); stroke-width: 2; stroke-dasharray: 5 3; }
+    .group rect.box { fill: var(--lane); fill-opacity: 0.035; stroke: var(--text-muted); stroke-width: 1.5; }
+    .thick rect.box { stroke-width: 3; }
+    .node:hover rect.box { fill-opacity: 0.24; }
+    .t { fill: var(--text-primary); font-size: 12.5px; font-weight: 700; }
+    .tc { fill: var(--text-primary); font-size: 12px; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .d { fill: var(--text-secondary); font-size: 11px; }
+    .c { fill: var(--text-secondary); font-size: 10.5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .code, .cmt, .c, .d { white-space: pre; }
+    .code { fill: var(--text-primary); font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .cmt { fill: var(--text-muted); font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .m { fill: var(--text-muted); font-size: 11px; }
+    .dh { fill: var(--text-secondary); font-size: 11px; paint-order: stroke; stroke: var(--surface-1); stroke-width: 5px; stroke-linejoin: round; }
+    .mh { fill: var(--text-muted); font-size: 11px; paint-order: stroke; stroke: var(--surface-1); stroke-width: 5px; stroke-linejoin: round; }
+    .th { fill: var(--text-primary); font-size: 12.5px; font-weight: 700; paint-order: stroke; stroke: var(--surface-1); stroke-width: 5px; stroke-linejoin: round; }
+    .tag { fill: var(--text-muted); font-size: 10.5px; text-anchor: end; }
+    .edge { stroke: var(--text-secondary); stroke-width: 1.5; fill: none; }
+    .bypass { stroke-dasharray: 6 4; }
+    .real { stroke: var(--text-secondary); stroke-width: 1.5; fill: none; stroke-dasharray: 6 4; }
+    .arrow { fill: var(--text-secondary); }
+    .tri { fill: var(--surface-1); stroke: var(--text-secondary); stroke-width: 1.2; }
+    .lbl { fill: var(--text-secondary); font-size: 10.5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; paint-order: stroke; stroke: var(--surface-1); stroke-width: 4px; stroke-linejoin: round; }
+    .lbl-s { fill: var(--text-secondary); font-size: 11px; paint-order: stroke; stroke: var(--surface-1); stroke-width: 4px; stroke-linejoin: round; }
+    .badge circle { fill: var(--text-primary); }
+    .badge text { fill: var(--surface-1); font-size: 11px; font-weight: 700; text-anchor: middle; }
+    .pill-r88 rect { fill: var(--text-primary); }
+    .pill-r88 text { fill: var(--surface-1); font-size: 10px; font-weight: 700; text-anchor: middle; }
+    .pill-offer rect { fill: var(--surface-1); stroke: var(--text-primary); stroke-width: 1.2; stroke-dasharray: 3 2; }
+    .pill-offer text { fill: var(--text-primary); font-size: 10px; font-weight: 700; text-anchor: middle; }
+    .hook rect { fill: var(--surface-1); stroke: var(--boundary); stroke-width: 1.8; }
+    .hook text { fill: var(--boundary); font-size: 10px; font-weight: 700; text-anchor: middle; }
+    .panel rect { fill: var(--lane); fill-opacity: 0.035; stroke: var(--text-muted); stroke-width: 1; }
+    .ph { fill: var(--text-primary); font-size: 13.5px; font-weight: 700; }
+    .p { fill: var(--text-secondary); font-size: 11.5px; }
+    .pn { fill: var(--text-primary); font-size: 11.5px; font-weight: 700; }
+    .note { fill: var(--text-secondary); font-size: 12px; }
+    .note-h { fill: var(--text-primary); font-size: 13.5px; font-weight: 700; }
+    .chip { font-size: 11px; fill: var(--text-primary); text-anchor: middle; }
+    .flow-h { fill: var(--text-primary); font-size: 11.5px; font-weight: 700; }
+</style>
+<defs>
+<marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrow"/></marker>
+<marker id="tri" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto"><path d="M1,1 L11,6 L1,11 z" class="tri"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1620" height="1370"/>
+<text class="h1" x="50" y="36">Proposed: file reader / writer interfaces (RFC-88 section 2)</text>
+<text class="sub" x="50" y="58">Formats go through one boundary: HoodieRow on writes, HoodieRowBuilder or a batch view on reads. Names are placeholders. Compare writer-reader-today.svg.</text>
+<rect x="50" y="76" width="14" height="14" rx="3" fill="var(--boundary)" fill-opacity="0.12" stroke="var(--boundary)" stroke-width="2"/>
+<text class="legend" x="70" y="87">Hudi shared (hudi-common)</text>
+<rect x="261" y="76" width="14" height="14" rx="3" fill="var(--engine)" fill-opacity="0.12" stroke="var(--engine)" stroke-width="2"/>
+<text class="legend" x="281" y="87">Engine implementation</text>
+<rect x="445" y="76" width="14" height="14" rx="3" fill="var(--format)" fill-opacity="0.12" stroke="var(--format)" stroke-width="2"/>
+<text class="legend" x="465" y="87">Format implementation</text>
+<rect x="629" y="76" width="14" height="14" rx="3" fill="var(--persist-fill)" stroke="var(--persist)" stroke-width="2" stroke-dasharray="4 2"/>
+<text class="legend" x="649" y="87">Unchanged</text>
+<line class="real" x1="734" y1="83" x2="778" y2="83" marker-end="url(#tri)"/>
+<text class="legend" x="786" y="87">implements</text>
+<line class="edge" x1="878" y1="83" x2="918" y2="83" marker-end="url(#arr)"/>
+<text class="legend" x="926" y="87">uses</text>
+<g class="node engine"><rect class="box" x="50" y="112" width="210" height="108" rx="8"/><text class="t" x="62" y="132">Spark</text><text class="c" x="62" y="150">SparkRowWrapper</text><text class="d" x="62" y="165">InternalRow as HoodieRow (writes)</text><text class="c" x="62" y="180">HoodieSparkRow</text><text class="d" x="62" y="195">reads: builder or batch view</text></g>
+<path class="real" d="M155,220 L250,262" marker-end="url(#tri)"/>
+<g class="node engine"><rect class="box" x="272" y="112" width="210" height="108" rx="8"/><text class="t" x="284" y="132">Flink</text><text class="c" x="284" y="150">FlinkRowWrapper</text><text class="d" x="284" y="165">RowData as HoodieRow (writes)</text><text class="c" x="284" y="180">HoodieFlinkRow</text><text class="d" x="284" y="195">reads: builder or batch view</text></g>
+<path class="real" d="M377,220 L425,262" marker-end="url(#tri)"/>
+<g class="node engine"><rect class="box" x="494" y="112" width="210" height="108" rx="8"/><text class="t" x="506" y="132">Avro / Java client</text><text class="c" x="506" y="150">AvroRowWrapper</text><text class="d" x="506" y="165">IndexedRecord as HoodieRow</text><text class="c" x="506" y="180">HoodieAvroRow</text><text class="d" x="506" y="195">reads: builder or batch view</text></g>
+<path class="real" d="M599,220 L600,262" marker-end="url(#tri)"/>
+<g class="node engine"><rect class="box" x="716" y="112" width="210" height="108" rx="8"/><text class="t" x="728" y="132">Hive (read only)</text><text class="c" x="728" y="150">HiveRows</text><text class="d" x="728" y="165">builder over ArrayWritable;</text><text class="d" x="728" y="180">replaces Avro then</text><text class="d" x="728" y="195">avroToArrayWritable</text></g>
+<path class="edge" d="M821,220 L775,262" marker-end="url(#arr)"/>
+<g class="node engine"><rect class="box" x="938" y="112" width="210" height="108" rx="8"/><text class="t" x="950" y="132">Trino (read only)</text><text class="c" x="950" y="150">TrinoRows</text><text class="d" x="950" y="165">builder over Trino Block</text><text class="d" x="950" y="180">builders; replaces</text><text class="d" x="950" y="195">HudiAvroSerializer</text></g>
+<path class="edge" d="M1043,220 L950,262" marker-end="url(#arr)"/>
+<g class="node engine"><rect class="box" x="1180" y="112" width="390" height="108" rx="8"/><text class="t" x="1192" y="132">Engine fast paths (optional)</text><text class="c" x="1192" y="150">SparkVectorizedReaders: Parquet, Arrow</text><text class="c" x="1192" y="165">FlinkVectorizedParquetReader</text><text class="c" x="1192" y="180">TrinoPageSource</text><text class="d" x="1192" y="195">engine-native batch readers (Delta Kernel model)</text></g>
+<path class="real" d="M1375,220 L1375,262" marker-end="url(#tri)"/>
+<g class="node boundary"><rect class="box" x="50" y="262" width="1098" height="150" rx="8"/><text class="tc" x="62" y="282">interface HoodieRow</text><text class="code" x="62" y="300">int getFieldCount();  boolean isNullAt(int i);</text><text class="code" x="62" y="316">boolean getBoolean(int i);  int getInt(int i);  long getLong(int i);  float getFloat(int i);  double getDouble(int i);</text><text class="code" x="62" y="332">byte[] getBinary(int i);  void getBinaryRef(int i, BinaryRef ref);  // STRING as UTF-8, BINARY, FIXED, UUID</text><text class="code" x="62" y="348">long getDecimalUnscaledLong(int i, int p, int s);  // p &lt;= 18;   byte[] getDecimalUnscaledBytes(int i, int p, int s);  // p &gt; 18</text><text class="code" x="62" y="364">long getTimestamp(int i, int p); // p &lt;= 6;  long getNanoTimestampMillis(int i);  int getNanoTimestampNanoOfMilli(int i);</text><text class="code" x="62" y="380">int getDate(int i);  HoodieRow getRow(int i, int numFields);  HoodieArray getArray(int i);  HoodieMap getMap(int i);</text><text class="cmt" x="62" y="396">// HoodieArray / HoodieMap: same getters. HoodieRowBuilder&lt;R&gt;: one setter per getter; builds the engine's row</text></g>
+<text class="tag" x="1134" y="282">hudi-common</text>
+<g class="node engine"><rect class="box" x="1180" y="262" width="390" height="150" rx="8"/><text class="tc" x="1192" y="282">interface VectorizedFileReader&lt;B&gt;</text><text class="code" x="1192" y="300">ClosableIterator&lt;B&gt; readBatches(</text><text class="code" x="1192" y="316">    SchemaTransformPlan plan,</text><text class="code" x="1192" y="332">    Option&lt;Expression&gt; filter);</text><text class="cmt" x="1192" y="348">// same physical schema and plan as the</text><text class="cmt" x="1192" y="364">// row reader; results must be equal</text></g>
+<path class="edge" d="M175,412 L175,448" marker-end="url(#arr)"/>
+<text class="lbl-s" x="183" y="434">typed values</text>
+<g class="node boundary thick"><rect class="box" x="50" y="448" width="250" height="116" rx="8"/><text class="tc" x="62" y="468">HoodieSchema</text><text class="d" x="62" y="486">logical schema (RFC-99)</text><text class="d" x="62" y="501">field types tell each getter its</text><text class="d" x="62" y="516">representation</text></g>
+<g class="pill-r88"><rect x="236" y="440" width="54" height="16" rx="8"/><text x="263" y="452">RFC-99</text></g>
+<g class="node boundary"><rect class="box" x="320" y="448" width="280" height="116" rx="8"/><text class="tc" x="332" y="468">FormatSchemaMapper</text><text class="c" x="332" y="486">toPhysicalSchema(schema, opts)</text><text class="c" x="332" y="501">fromPhysicalSchema(p, hint)</text><text class="d" x="332" y="516">the only source of a physical</text><text class="d" x="332" y="531">schema; repair folds in</text></g>
+<g class="node boundary"><rect class="box" x="620" y="448" width="260" height="116" rx="8"/><text class="tc" x="632" y="468">SchemaTransformPlan</text><text class="d" x="632" y="486">file schema -&gt; required schema</text><text class="d" x="632" y="501">keep / rename / promote /</text><text class="d" x="632" y="516">fill default / drop</text><text class="d" x="632" y="531">applied by every reader</text></g>
+<g class="node boundary"><rect class="box" x="900" y="448" width="248" height="116" rx="8"/><text class="tc" x="912" y="468">Expression</text><text class="d" x="912" y="486">Hudi filter (RFC-88 section 4)</text><text class="d" x="912" y="501">rendered per format for</text><text class="d" x="912" y="516">pushdown; see</text><text class="d" x="912" y="531">expression-proposal.svg</text></g>
+<g class="node boundary"><rect class="box" x="1180" y="448" width="390" height="116" rx="8"/><text class="tc" x="1192" y="468">final class FileFormats</text><text class="code" x="1192" y="486">FileFormatIO of(HoodieFileFormat f);</text><text class="cmt" x="1192" y="502">// ServiceLoader; keyed by file format (+ AVRO).</text><text class="cmt" x="1192" y="518">// Replaces HoodieIOFactory, which keys on</text><text class="cmt" x="1192" y="534">// record type x file format</text></g>
+<path class="edge" d="M460,606 L460,564" marker-end="url(#arr)"/>
+<path class="edge" d="M750,606 L750,564" marker-end="url(#arr)"/>
+<path class="edge" d="M1024,606 L1024,564" marker-end="url(#arr)"/>
+<g class="node format"><rect class="box" x="50" y="606" width="1098" height="136" rx="8"/><text class="tc" x="62" y="626">interface FileFormatIO</text><text class="code" x="62" y="644">HoodieFileFormat format();</text><text class="code" x="62" y="660">FileWriter newWriter(WriteTarget target, HoodieSchema schema, WriteOptions opts);   // StoragePath or OutputStream</text><text class="code" x="62" y="676">FileReader newReader(InputFile file, HoodieSchema required, ReadOptions opts);</text><text class="code" x="62" y="692">interface FileWriter extends Closeable { void write(HoodieRow row); long bytesWritten(); }</text><text class="code" x="62" y="708">interface FileReader extends Closeable { HoodieSchema fileSchema(); &lt;R&gt; ClosableIterator&lt;R&gt; read(p, f, HoodieRowBuilder&lt;R&gt; b); ... }</text><text class="cmt" x="62" y="724">// inside each format: one StructWriter / StructReader over HoodieRow, one ValueWriter / ValueReader per field</text></g>
+<text class="tag" x="1134" y="626">hudi-common</text>
+<g class="node persist"><rect class="box" x="1180" y="606" width="390" height="136" rx="8"/><text class="t" x="1192" y="626">Unchanged</text><text class="d" x="1192" y="644">Data bytes and log block encodings: unchanged;</text><text class="d" x="1192" y="659">existing files are never rewritten.</text><text class="d" x="1192" y="674">Writer API: HoodieFileWriter + HoodieRecord;</text><text class="d" x="1192" y="689">formats read record.asRow().</text><text class="d" x="1192" y="704">Merging: FileGroupReader + RecordContext.</text></g>
+<g class="node format"><rect class="box" x="50" y="784" width="240" height="112" rx="8"/><text class="tc" x="62" y="804">ParquetFileFormatIO</text><text class="d" x="62" y="822">replaces HoodieAvroParquetWriter,</text><text class="d" x="62" y="837">HoodieSparkParquetWriter, Internal-</text><text class="d" x="62" y="852">RowParquetWriter, RowDataParquetWriter</text><text class="d" x="62" y="867">and their 3 write supports</text></g>
+<path class="real" d="M170,784 L200,742" marker-end="url(#tri)"/>
+<g class="node format"><rect class="box" x="306" y="784" width="240" height="112" rx="8"/><text class="tc" x="318" y="804">LanceFileFormatIO</text><text class="d" x="318" y="822">replaces HoodieSparkLanceWriter,</text><text class="d" x="318" y="837">HoodieRowDataLanceWriter and</text><text class="d" x="318" y="852">both Lance readers</text></g>
+<path class="real" d="M426,784 L380,742" marker-end="url(#tri)"/>
+<g class="node format"><rect class="box" x="562" y="784" width="240" height="112" rx="8"/><text class="tc" x="574" y="804">OrcFileFormatIO</text><text class="d" x="574" y="822">replaces HoodieAvroOrcWriter /</text><text class="d" x="574" y="837">Reader; Spark and Flink can now</text><text class="d" x="574" y="852">write ORC</text></g>
+<path class="real" d="M682,784 L560,742" marker-end="url(#tri)"/>
+<g class="node format"><rect class="box" x="818" y="784" width="240" height="112" rx="8"/><text class="tc" x="830" y="804">HFileFormatIO</text><text class="d" x="830" y="822">replaces HoodieAvroHFileWriter and</text><text class="d" x="830" y="837">the HFile readers; values stay</text><text class="d" x="830" y="852">Avro binary, encoded from rows</text></g>
+<path class="real" d="M938,784 L740,742" marker-end="url(#tri)"/>
+<g class="node format"><rect class="box" x="1074" y="784" width="240" height="112" rx="8"/><text class="tc" x="1086" y="804">AvroBinaryFormatIO</text><text class="d" x="1086" y="822">Avro data blocks: HoodieRow encoded</text><text class="d" x="1086" y="837">straight to Avro binary; replaces</text><text class="d" x="1086" y="852">the row-to-Avro step in getAvroBytes</text></g>
+<path class="real" d="M1194,784 L920,742" marker-end="url(#tri)"/>
+<g class="node format"><rect class="box" x="1330" y="784" width="240" height="112" rx="8"/><text class="tc" x="1342" y="804">VortexFileFormatIO</text><text class="d" x="1342" y="822">replaces HoodieSparkVortexWriter /</text><text class="d" x="1342" y="837">Reader; any engine (JDK 17 builds)</text></g>
+<path class="real" d="M1450,784 L1100,742" marker-end="url(#tri)"/>
+<text class="ph" x="50" y="938">Example flows</text>
+<text class="flow-h" x="50" y="974">Spark / Flink write</text>
+<g class="engine"><rect class="box" x="190" y="956" width="110" height="28" rx="6"/></g>
+<text class="chip" x="245.0" y="974">HoodieRecord</text>
+<path class="edge" d="M300,970 L470,970" marker-end="url(#arr)"/>
+<text class="lbl" x="385" y="964" text-anchor="middle">record.asRow()</text>
+<g class="boundary"><rect class="box" x="470" y="956" width="110" height="28" rx="6"/></g>
+<text class="chip" x="525.0" y="974">HoodieRow</text>
+<path class="edge" d="M580,970 L820,970" marker-end="url(#arr)"/>
+<text class="lbl" x="700" y="964" text-anchor="middle">ParquetFileFormatIO writer</text>
+<g class="format"><rect class="box" x="820" y="956" width="110" height="28" rx="6"/></g>
+<text class="chip" x="875.0" y="974">FileWriter</text>
+<path class="edge" d="M930,970 L1010,970" marker-end="url(#arr)"/>
+<text class="lbl" x="970" y="964" text-anchor="middle">write(row)</text>
+<g class="format"><rect class="box" x="1010" y="956" width="230" height="28" rx="6"/></g>
+<text class="chip" x="1125.0" y="974">Parquet file: same bytes from any engine</text>
+<text class="flow-h" x="50" y="1024">Flink read</text>
+<g class="format"><rect class="box" x="190" y="1006" width="110" height="28" rx="6"/></g>
+<text class="chip" x="245.0" y="1024">Parquet file</text>
+<path class="edge" d="M300,1020 L470,1020" marker-end="url(#arr)"/>
+<text class="lbl" x="385" y="1014" text-anchor="middle">read(plan, filter)</text>
+<g class="boundary"><rect class="box" x="470" y="1006" width="110" height="28" rx="6"/></g>
+<text class="chip" x="525.0" y="1024">HoodieRow</text>
+<path class="edge" d="M580,1020 L820,1020" marker-end="url(#arr)"/>
+<text class="lbl" x="700" y="1014" text-anchor="middle">HoodieFlinkRow.replace</text>
+<g class="engine"><rect class="box" x="820" y="1006" width="110" height="28" rx="6"/></g>
+<text class="chip" x="875.0" y="1024">RowData view</text>
+<text class="m" x="946" y="1024">a view over the column batch, not a copy</text>
+<text class="flow-h" x="50" y="1074">Log block write</text>
+<g class="engine"><rect class="box" x="190" y="1056" width="110" height="28" rx="6"/></g>
+<text class="chip" x="245.0" y="1074">Spark rows</text>
+<path class="edge" d="M300,1070 L470,1070" marker-end="url(#arr)"/>
+<text class="lbl" x="385" y="1064" text-anchor="middle">SparkRowWrapper</text>
+<g class="boundary"><rect class="box" x="470" y="1056" width="110" height="28" rx="6"/></g>
+<text class="chip" x="525.0" y="1074">HoodieRow</text>
+<path class="edge" d="M580,1070 L820,1070" marker-end="url(#arr)"/>
+<text class="lbl" x="700" y="1064" text-anchor="middle">AvroBinaryFormatIO (OutputStream)</text>
+<g class="persist"><rect class="box" x="820" y="1056" width="110" height="28" rx="6"/></g>
+<text class="chip" x="875.0" y="1074">Avro data block</text>
+<text class="m" x="946" y="1074">same bytes as today, no GenericRecord per record</text>
+<g class="panel"><rect x="50" y="1110" width="760" height="244" rx="8"/></g>
+<text class="ph" x="66" y="1134">Design rules</text>
+<g class="badge"><circle cx="76" cy="1154" r="9"/><text x="76" y="1158">1</text></g>
+<text class="p" x="92" y="1158">Formats see only HoodieRow and HoodieRowBuilder; each engine implements both. N + M classes,</text>
+<text class="p" x="92" y="1173">engine-owned read fast paths stay beside it; Iceberg's per-engine writers stay N x M.</text>
+<g class="badge"><circle cx="76" cy="1197" r="9"/><text x="76" y="1201">2</text></g>
+<text class="p" x="92" y="1201">Getters are typed and return canonical values (UTF-8 bytes, unscaled decimals, timestamps in</text>
+<text class="p" x="92" y="1216">the column's unit): each conversion is written once per logical type, not per engine x format.</text>
+<g class="badge"><circle cx="76" cy="1240" r="9"/><text x="76" y="1244">3</text></g>
+<text class="p" x="92" y="1244">The physical schema comes only from FormatSchemaMapper; ValueWriters are chosen from it.</text>
+<g class="badge"><circle cx="76" cy="1268" r="9"/><text x="76" y="1272">4</text></g>
+<text class="p" x="92" y="1272">Readers take a SchemaTransformPlan and an optional Hudi Expression.</text>
+<g class="badge"><circle cx="76" cy="1296" r="9"/><text x="76" y="1300">5</text></g>
+<text class="p" x="92" y="1300">Engine batch readers stay behind VectorizedFileReader and must match the row reader.</text>
+<g class="panel"><rect x="830" y="1110" width="740" height="244" rx="8"/></g>
+<text class="ph" x="846" y="1134">Why: resolves the notes in writer-reader-today.svg</text>
+<g class="badge"><circle cx="856" cy="1154" r="9"/><text x="856" y="1158">1</text></g>
+<text class="p" x="872" y="1158">Format holes close: every engine wrapper works with every FileFormatIO.</text>
+<g class="badge"><circle cx="856" cy="1182" r="9"/><text x="856" y="1186">2</text></g>
+<text class="p" x="872" y="1186">One writer per format, built from toPhysicalSchema(): three Parquet and two Lance write</text>
+<text class="p" x="872" y="1201">paths become one each.</text>
+<g class="badge"><circle cx="856" cy="1225" r="9"/><text x="856" y="1229">3</text></g>
+<text class="p" x="872" y="1229">No GenericRecord per record on log blocks, ORC writes, Hive or Trino reads; payload</text>
+<text class="p" x="872" y="1244">merging keeps Avro (record merger API, outside this design).</text>
+<g class="badge"><circle cx="856" cy="1268" r="9"/><text x="856" y="1272">4</text></g>
+<text class="p" x="872" y="1272">FileFormats keys on file format only; a gap is a missing implementation, not a runtime throw.</text>
+<g class="badge"><circle cx="856" cy="1296" r="9"/><text x="856" y="1300">5</text></g>
+<text class="p" x="872" y="1300">Batch readers stay (vinothchandar's review), bound to the same plan.</text>
+<g class="badge"><circle cx="856" cy="1324" r="9"/><text x="856" y="1328">6</text></g>
+<text class="p" x="872" y="1328">Native (v2) logs already work this way; FileWriter with an OutputStream makes it the rule.</text>
+</svg>

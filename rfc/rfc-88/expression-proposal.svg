@@ -1,0 +1,222 @@
+<!--
+  Licensed to the Apache Software Foundation (ASF) under one or more
+  contributor license agreements.  See the NOTICE file distributed with
+  this work for additional information regarding copyright ownership.
+  The ASF licenses this file to You under the Apache License, Version 2.0
+  (the "License"); you may not use this file except in compliance with
+  the License.  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1620 1320" width="1620" height="1320" class="viz-root" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+<title>Proposed: expression interfaces (RFC-88 section 4, refined)</title>
+<style>
+    .viz-root { color-scheme: light; --surface-1: #fcfcfb; --lane: #0b0b0b; --text-primary: #0b0b0b;
+      --text-secondary: #52514e; --text-muted: #8a8984; --boundary: #2a78d6; --engine: #eb6834;
+      --format: #1baf7a; --persist: #8a8984; --persist-fill: #f0efec; }
+    @media (prefers-color-scheme: dark) {
+      .viz-root { color-scheme: dark; --surface-1: #1a1a19; --lane: #f0efec; --text-primary: #f0efec;
+        --text-secondary: #c3c2b7; --text-muted: #8a8984; --boundary: #3987e5; --engine: #d95926;
+        --format: #199e70; --persist: #8a8984; --persist-fill: #383835; }
+    }
+    .bg { fill: var(--surface-1); }
+    .h1 { fill: var(--text-primary); font-size: 20px; font-weight: 700; }
+    .sub { fill: var(--text-secondary); font-size: 12.5px; }
+    .legend { fill: var(--text-secondary); font-size: 12px; }
+    .lane { fill: var(--lane); fill-opacity: 0.035; }
+    .sep { stroke: var(--text-muted); stroke-opacity: 0.35; stroke-width: 1; }
+    .row-label { fill: var(--text-muted); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; }
+    .row-sub { fill: var(--text-muted); font-size: 11px; }
+    .col-h { fill: var(--text-primary); font-size: 14px; font-weight: 700; text-anchor: middle; }
+    .sec rect { fill: var(--lane); fill-opacity: 0.06; }
+    .sec text { fill: var(--text-primary); font-size: 13.5px; font-weight: 700; }
+    .boundary rect.box { fill: var(--boundary); fill-opacity: 0.12; stroke: var(--boundary); stroke-width: 2; }
+    .engine rect.box { fill: var(--engine); fill-opacity: 0.12; stroke: var(--engine); stroke-width: 2; }
+    .format rect.box { fill: var(--format); fill-opacity: 0.12; stroke: var(--format); stroke-width: 2; }
+    .persist rect.box { fill: var(--persist-fill); stroke: var(--persist); stroke-width: 2; stroke-dasharray: 5 3; }
+    .group rect.box { fill: var(--lane); fill-opacity: 0.035; stroke: var(--text-muted); stroke-width: 1.5; }
+    .thick rect.box { stroke-width: 3; }
+    .node:hover rect.box { fill-opacity: 0.24; }
+    .t { fill: var(--text-primary); font-size: 12.5px; font-weight: 700; }
+    .tc { fill: var(--text-primary); font-size: 12px; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .d { fill: var(--text-secondary); font-size: 11px; }
+    .c { fill: var(--text-secondary); font-size: 10.5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .code, .cmt, .c, .d { white-space: pre; }
+    .code { fill: var(--text-primary); font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .cmt { fill: var(--text-muted); font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .m { fill: var(--text-muted); font-size: 11px; }
+    .dh { fill: var(--text-secondary); font-size: 11px; paint-order: stroke; stroke: var(--surface-1); stroke-width: 5px; stroke-linejoin: round; }
+    .mh { fill: var(--text-muted); font-size: 11px; paint-order: stroke; stroke: var(--surface-1); stroke-width: 5px; stroke-linejoin: round; }
+    .th { fill: var(--text-primary); font-size: 12.5px; font-weight: 700; paint-order: stroke; stroke: var(--surface-1); stroke-width: 5px; stroke-linejoin: round; }
+    .tag { fill: var(--text-muted); font-size: 10.5px; text-anchor: end; }
+    .edge { stroke: var(--text-secondary); stroke-width: 1.5; fill: none; }
+    .bypass { stroke-dasharray: 6 4; }
+    .real { stroke: var(--text-secondary); stroke-width: 1.5; fill: none; stroke-dasharray: 6 4; }
+    .arrow { fill: var(--text-secondary); }
+    .tri { fill: var(--surface-1); stroke: var(--text-secondary); stroke-width: 1.2; }
+    .lbl { fill: var(--text-secondary); font-size: 10.5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; paint-order: stroke; stroke: var(--surface-1); stroke-width: 4px; stroke-linejoin: round; }
+    .lbl-s { fill: var(--text-secondary); font-size: 11px; paint-order: stroke; stroke: var(--surface-1); stroke-width: 4px; stroke-linejoin: round; }
+    .badge circle { fill: var(--text-primary); }
+    .badge text { fill: var(--surface-1); font-size: 11px; font-weight: 700; text-anchor: middle; }
+    .pill-r88 rect { fill: var(--text-primary); }
+    .pill-r88 text { fill: var(--surface-1); font-size: 10px; font-weight: 700; text-anchor: middle; }
+    .pill-offer rect { fill: var(--surface-1); stroke: var(--text-primary); stroke-width: 1.2; stroke-dasharray: 3 2; }
+    .pill-offer text { fill: var(--text-primary); font-size: 10px; font-weight: 700; text-anchor: middle; }
+    .hook rect { fill: var(--surface-1); stroke: var(--boundary); stroke-width: 1.8; }
+    .hook text { fill: var(--boundary); font-size: 10px; font-weight: 700; text-anchor: middle; }
+    .panel rect { fill: var(--lane); fill-opacity: 0.035; stroke: var(--text-muted); stroke-width: 1; }
+    .ph { fill: var(--text-primary); font-size: 13.5px; font-weight: 700; }
+    .p { fill: var(--text-secondary); font-size: 11.5px; }
+    .pn { fill: var(--text-primary); font-size: 11.5px; font-weight: 700; }
+    .note { fill: var(--text-secondary); font-size: 12px; }
+    .note-h { fill: var(--text-primary); font-size: 13.5px; font-weight: 700; }
+    .chip { font-size: 11px; fill: var(--text-primary); text-anchor: middle; }
+    .flow-h { fill: var(--text-primary); font-size: 11.5px; font-weight: 700; }
+</style>
+<defs>
+<marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrow"/></marker>
+<marker id="tri" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto"><path d="M1,1 L11,6 L1,11 z" class="tri"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1620" height="1320"/>
+<text class="h1" x="50" y="36">Proposed: expression interfaces (RFC-88 section 4, refined)</text>
+<text class="sub" x="50" y="58">Engines translate into Hudi Expression once; catalogs and readers render out of it; one planner picks metadata-table indexes. Names are placeholders. Compare expression-today.svg.</text>
+<rect x="50" y="76" width="14" height="14" rx="3" fill="var(--boundary)" fill-opacity="0.12" stroke="var(--boundary)" stroke-width="2"/>
+<text class="legend" x="70" y="87">Hudi shared (hudi-common)</text>
+<rect x="261" y="76" width="14" height="14" rx="3" fill="var(--engine)" fill-opacity="0.12" stroke="var(--engine)" stroke-width="2"/>
+<text class="legend" x="281" y="87">Engine implementation</text>
+<rect x="445" y="76" width="14" height="14" rx="3" fill="var(--format)" fill-opacity="0.12" stroke="var(--format)" stroke-width="2"/>
+<text class="legend" x="465" y="87">Reader pushdown</text>
+<rect x="590" y="76" width="14" height="14" rx="3" fill="var(--persist-fill)" stroke="var(--persist)" stroke-width="2" stroke-dasharray="4 2"/>
+<text class="legend" x="610" y="87">Catalog</text>
+<line class="real" x1="682" y1="83" x2="726" y2="83" marker-end="url(#tri)"/>
+<text class="legend" x="734" y="87">implements</text>
+<line class="edge" x1="826" y1="83" x2="866" y2="83" marker-end="url(#arr)"/>
+<text class="legend" x="874" y="87">uses</text>
+<g class="node engine"><rect class="box" x="50" y="112" width="180" height="96" rx="8"/><text class="tc" x="62" y="132">SparkTranslator</text><text class="c" x="62" y="150">&lt;catalyst.Expression&gt;</text><text class="d" x="62" y="165">replaces SparkFilterHelper,</text><text class="d" x="62" y="180">DataSkippingUtils translation,</text><text class="d" x="62" y="195">RLI / bloom key extraction</text></g>
+<path class="real" d="M140,208 L130,250" marker-end="url(#tri)"/>
+<g class="node engine"><rect class="box" x="240" y="112" width="180" height="96" rx="8"/><text class="tc" x="252" y="132">FlinkTranslator</text><text class="c" x="252" y="150">&lt;ResolvedExpression&gt;</text><text class="d" x="252" y="165">replaces ExpressionUtils and</text><text class="d" x="252" y="180">ExpressionEvaluators building</text></g>
+<path class="real" d="M330,208 L310,250" marker-end="url(#tri)"/>
+<g class="node engine"><rect class="box" x="430" y="112" width="180" height="96" rx="8"/><text class="tc" x="442" y="132">HiveTranslator</text><text class="c" x="442" y="150">&lt;ExprNodeGenericFuncDesc&gt;</text><text class="d" x="442" y="165">new: Hive gains metadata-table</text><text class="d" x="442" y="180">data skipping</text></g>
+<path class="real" d="M520,208 L490,250" marker-end="url(#tri)"/>
+<g class="node engine"><rect class="box" x="620" y="112" width="180" height="96" rx="8"/><text class="tc" x="632" y="132">TrinoTranslator</text><text class="c" x="632" y="150">&lt;TupleDomain&gt;</text><text class="d" x="632" y="165">replaces Domain predicates in</text><text class="d" x="632" y="180">the Hudi*IndexSupport classes</text></g>
+<path class="real" d="M710,208 L670,250" marker-end="url(#tri)"/>
+<g class="node persist"><rect class="box" x="820" y="112" width="180" height="96" rx="8"/><text class="tc" x="832" y="132">HmsRenderer</text><text class="c" x="832" y="150">&lt;String&gt;</text><text class="d" x="832" y="165">HMS partition filter;</text><text class="d" x="832" y="180">replaces FilterGenVisitor</text></g>
+<path class="real" d="M910,208 L900,250" marker-end="url(#tri)"/>
+<g class="node persist"><rect class="box" x="1010" y="112" width="180" height="96" rx="8"/><text class="tc" x="1022" y="132">GlueRenderer</text><text class="c" x="1022" y="150">&lt;String&gt;</text><text class="d" x="1022" y="165">Glue filter; replaces</text><text class="d" x="1022" y="180">GlueFilterGenVisitor</text></g>
+<path class="real" d="M1100,208 L1080,250" marker-end="url(#tri)"/>
+<g class="node format"><rect class="box" x="1200" y="112" width="180" height="96" rx="8"/><text class="tc" x="1212" y="132">ParquetRenderer</text><text class="c" x="1212" y="150">&lt;FilterPredicate&gt;</text><text class="d" x="1212" y="165">replaces Flink</text><text class="d" x="1212" y="180">ExpressionPredicates; any</text><text class="d" x="1212" y="195">parquet-mr reader</text></g>
+<path class="real" d="M1290,208 L1260,250" marker-end="url(#tri)"/>
+<g class="node format"><rect class="box" x="1390" y="112" width="180" height="96" rx="8"/><text class="tc" x="1402" y="132">SparkFilterRenderer</text><text class="c" x="1402" y="150">&lt;sources.Filter&gt;</text><text class="d" x="1402" y="165">feeds Spark's vectorized</text><text class="d" x="1402" y="180">Parquet reader</text></g>
+<path class="real" d="M1480,208 L1440,250" marker-end="url(#tri)"/>
+<g class="node engine"><rect class="box" x="50" y="250" width="750" height="124" rx="8"/><text class="tc" x="62" y="270">interface ExpressionTranslator&lt;E&gt;</text><text class="code" x="62" y="288">String system();                       // spark, flink, hive, trino</text><text class="code" x="62" y="304">Option&lt;Expression&gt; toHudi(E expr, HoodieSchema schema);</text><text class="code" x="62" y="320">ExpressionSupport support(Operator op, HoodieSchemaType type);</text><text class="cmt" x="62" y="336">// conservative: push NOT to leaves, then drop an AND conjunct or a whole OR</text><text class="cmt" x="62" y="352">// literals typed via TypeSystemMapper; strip a cast only if order-preserving</text></g>
+<g class="node persist"><rect class="box" x="820" y="250" width="750" height="124" rx="8"/><text class="tc" x="832" y="270">interface ExpressionRenderer&lt;T&gt;</text><text class="code" x="832" y="288">String target();                       // hms, glue, parquet, spark-filter</text><text class="code" x="832" y="304">Option&lt;T&gt; render(Expression expr, MappingOptions opts);</text><text class="cmt" x="832" y="320">// conservative: the rendered filter keeps every row the expression keeps</text><text class="cmt" x="832" y="336">// HMS and Glue differ only in quoting: one renderer, two dialects</text></g>
+<path class="edge" d="M425,374 L425,416" marker-end="url(#arr)"/>
+<text class="lbl" x="433" y="399">toHudi</text>
+<path class="edge" d="M700,416 L700,394 L1195,394 L1195,374" marker-end="url(#arr)"/>
+<text class="lbl" x="1203" y="390">render</text>
+<g class="node boundary"><rect class="box" x="50" y="416" width="250" height="118" rx="8"/><text class="tc" x="62" y="436">TypeSystemMapper</text><text class="d" x="62" y="454">types literals and columns with</text><text class="d" x="62" y="469">HoodieSchemaType (today:</text><text class="d" x="62" y="484">InternalSchema Types, per engine)</text></g>
+<path class="edge" d="M300,475 L320,475" marker-end="url(#arr)"/>
+<g class="node boundary thick"><rect class="box" x="320" y="416" width="480" height="118" rx="8"/><text class="tc" x="332" y="436">class Expression (exists in hudi-common)</text><text class="d" x="332" y="454">Predicates: AND, OR, NOT, EQ, GT, LT, IN, IS_NULL, STARTS_WITH, CONTAINS</text><text class="d" x="332" y="469">Literal types: InternalSchema Types today, HoodieSchemaType next</text><text class="d" x="332" y="484">Bind / PartialBind visitors (exist)</text><text class="d" x="332" y="499">also built by Hive sync's PartitionFilterGenerator (exists)</text></g>
+<path class="edge" d="M800,450 L820,450" marker-end="url(#arr)"/>
+<g class="node boundary"><rect class="box" x="820" y="416" width="360" height="118" rx="8"/><text class="tc" x="832" y="436">Partition pruning (exists)</text><text class="c" x="832" y="454">HoodieTableMetadata</text><text class="c" x="832" y="469">  .getPartitionPathWithPrefix...(Expression)</text><text class="d" x="832" y="484">one evaluation for every engine; replaces</text><text class="d" x="832" y="499">Spark's second Catalyst pass and the</text><text class="d" x="832" y="514">Flink / Trino pruners</text></g>
+<g class="node boundary"><rect class="box" x="1200" y="416" width="370" height="118" rx="8"/><text class="tc" x="1212" y="436">Key lookups (exist)</text><text class="d" x="1212" y="454">metadata-table and log readers take</text><text class="d" x="1212" y="469">the IN / STARTS_WITH shapes</text><text class="d" x="1212" y="484">(Predicates.in, startsWithAny)</text></g>
+<path class="edge" d="M560,534 L560,576" marker-end="url(#arr)"/>
+<text class="lbl" x="568" y="559">plan(filter)</text>
+<g class="node boundary"><rect class="box" x="50" y="576" width="750" height="134" rx="8"/><text class="tc" x="62" y="596">interface IndexPlanner</text><text class="code" x="62" y="614">List&lt;IndexLookup&gt; plan(Expression filter, HoodieSchema schema,</text><text class="code" x="62" y="630">                       Set&lt;MetadataPartitionType&gt; available);</text><text class="tc" x="62" y="646">interface IndexLookup</text><text class="code" x="62" y="662">MetadataPartitionType index();</text><text class="code" x="62" y="678">CandidateFiles lookup(Expression filter, HoodieTableMetadata mdt, StatsEvaluator eval);</text></g>
+<path class="edge" d="M800,643 L820,643" marker-end="url(#arr)"/>
+<g class="node boundary"><rect class="box" x="820" y="576" width="750" height="134" rx="8"/><text class="tc" x="832" y="596">interface StatsEvaluator</text><text class="code" x="832" y="614">CandidateFiles prune(Expression filter, MetadataPartitionType index,</text><text class="code" x="832" y="630">                     HoodieTableMetadata mdt);</text><text class="cmt" x="832" y="646">// option A: HudiStatsEvaluator in hudi-common (RFC-88's Evaluator over StructLike)</text><text class="cmt" x="832" y="662">// option B: engine-native, e.g. SparkStatsEvaluator on DataFrames (vinothchandar)</text><text class="cmt" x="832" y="678">// the open RFC-88 question becomes a pluggable choice, not a fork in the design</text></g>
+<g class="node group"><rect class="box" x="50" y="752" width="750" height="128" rx="8"/><text class="t" x="62" y="772">IndexLookup implementations, one per index type, same for every engine</text></g>
+<g class="node boundary"><rect class="box" x="62" y="782" width="236" height="40" rx="8"/><text class="tc" x="74" y="802">ColumnStatsLookup</text></g>
+<text class="m" x="74" y="815">stats via StatsEvaluator</text>
+<g class="node boundary"><rect class="box" x="306" y="782" width="236" height="40" rx="8"/><text class="tc" x="318" y="802">PartitionStatsLookup</text></g>
+<text class="m" x="318" y="815">stats via StatsEvaluator</text>
+<g class="node boundary"><rect class="box" x="550" y="782" width="236" height="40" rx="8"/><text class="tc" x="562" y="802">ExpressionIndexLookup</text></g>
+<text class="m" x="562" y="815">index function + stats</text>
+<g class="node boundary"><rect class="box" x="62" y="828" width="236" height="40" rx="8"/><text class="tc" x="74" y="848">RecordIndexLookup</text></g>
+<text class="m" x="74" y="861">keys from EQ / IN</text>
+<g class="node boundary"><rect class="box" x="306" y="828" width="236" height="40" rx="8"/><text class="tc" x="318" y="848">BloomFilterLookup</text></g>
+<text class="m" x="318" y="861">keys from EQ / IN</text>
+<g class="node boundary"><rect class="box" x="550" y="828" width="236" height="40" rx="8"/><text class="tc" x="562" y="848">SecondaryIndexLookup</text></g>
+<text class="m" x="562" y="861">values from EQ / IN</text>
+<path class="real" d="M425,752 L425,710" marker-end="url(#tri)"/>
+<text class="m" x="62" y="900">replace Spark's *IndexSupport classes, Flink's FileStatsIndex / RecordLevelIndex, Trino's Hudi*IndexSupport</text>
+<g class="node boundary"><rect class="box" x="820" y="752" width="365" height="128" rx="8"/><text class="tc" x="832" y="772">HudiStatsEvaluator</text><text class="d" x="832" y="790">option A: evaluates in hudi-common over</text><text class="d" x="832" y="805">MDT stats read as StructLike; same</text><text class="d" x="832" y="820">result for every engine</text></g>
+<g class="node engine"><rect class="box" x="1205" y="752" width="365" height="128" rx="8"/><text class="tc" x="1217" y="772">SparkStatsEvaluator</text><text class="d" x="1217" y="790">option B: today's DataFrame approach</text><text class="d" x="1217" y="805">behind the interface; Flink and Trino</text><text class="d" x="1217" y="820">may plug in their own</text></g>
+<path class="real" d="M1002,752 L1002,710" marker-end="url(#tri)"/>
+<path class="real" d="M1387,752 L1387,710" marker-end="url(#tri)"/>
+<text class="ph" x="50" y="940">Example flows</text>
+<text class="flow-h" x="50" y="976">Spark query</text>
+<g class="engine"><rect class="box" x="160" y="958" width="110" height="28" rx="6"/></g>
+<text class="chip" x="215.0" y="976">Catalyst filter</text>
+<path class="edge" d="M270,972 L430,972" marker-end="url(#arr)"/>
+<text class="lbl" x="350" y="966" text-anchor="middle">SparkTranslator.toHudi</text>
+<g class="boundary"><rect class="box" x="430" y="958" width="100" height="28" rx="6"/></g>
+<text class="chip" x="480.0" y="976">Expression</text>
+<path class="edge" d="M530,972 L690,972" marker-end="url(#arr)"/>
+<text class="lbl" x="610" y="966" text-anchor="middle">IndexPlanner.plan</text>
+<g class="boundary"><rect class="box" x="690" y="958" width="130" height="28" rx="6"/></g>
+<text class="chip" x="755.0" y="976">ColumnStatsLookup</text>
+<path class="edge" d="M820,972 L980,972" marker-end="url(#arr)"/>
+<text class="lbl" x="900" y="966" text-anchor="middle">StatsEvaluator.prune</text>
+<g class="boundary"><rect class="box" x="980" y="958" width="120" height="28" rx="6"/></g>
+<text class="chip" x="1040.0" y="976">candidate files</text>
+<path class="edge" d="M1100,972 L1290,972" marker-end="url(#arr)"/>
+<text class="lbl" x="1195" y="966" text-anchor="middle">SparkFilterRenderer</text>
+<g class="format"><rect class="box" x="1290" y="958" width="150" height="28" rx="6"/></g>
+<text class="chip" x="1365.0" y="976">Spark Parquet reader</text>
+<text class="flow-h" x="50" y="1026">Hive query (new)</text>
+<g class="engine"><rect class="box" x="160" y="1008" width="110" height="28" rx="6"/></g>
+<text class="chip" x="215.0" y="1026">ExprNode filter</text>
+<path class="edge" d="M270,1022 L430,1022" marker-end="url(#arr)"/>
+<text class="lbl" x="350" y="1016" text-anchor="middle">HiveTranslator.toHudi</text>
+<g class="boundary"><rect class="box" x="430" y="1008" width="100" height="28" rx="6"/></g>
+<text class="chip" x="480.0" y="1026">Expression</text>
+<path class="edge" d="M530,1022 L690,1022" marker-end="url(#arr)"/>
+<text class="lbl" x="610" y="1016" text-anchor="middle">IndexPlanner.plan</text>
+<g class="boundary"><rect class="box" x="690" y="1008" width="130" height="28" rx="6"/></g>
+<text class="chip" x="755.0" y="1026">candidate files</text>
+<text class="m" x="836" y="1026">Hive gets the same data skipping as Spark, Flink and Trino</text>
+<text class="flow-h" x="50" y="1076">Hive sync</text>
+<g class="persist"><rect class="box" x="160" y="1058" width="110" height="28" rx="6"/></g>
+<text class="chip" x="215.0" y="1076">written partitions</text>
+<path class="edge" d="M270,1072 L430,1072" marker-end="url(#arr)"/>
+<text class="lbl" x="350" y="1066" text-anchor="middle">PartitionFilterGenerator</text>
+<g class="boundary"><rect class="box" x="430" y="1058" width="100" height="28" rx="6"/></g>
+<text class="chip" x="480.0" y="1076">Expression</text>
+<path class="edge" d="M530,1072 L690,1072" marker-end="url(#arr)"/>
+<text class="lbl" x="610" y="1066" text-anchor="middle">HmsRenderer.render</text>
+<g class="persist"><rect class="box" x="690" y="1058" width="130" height="28" rx="6"/></g>
+<text class="chip" x="755.0" y="1076">listPartitionsByFilter</text>
+<g class="panel"><rect x="50" y="1108" width="760" height="196" rx="8"/></g>
+<text class="ph" x="66" y="1132">Contract and shared tests</text>
+<g class="badge"><circle cx="76" cy="1152" r="9"/><text x="76" y="1156">1</text></g>
+<text class="p" x="92" y="1156">Translators and renderers are conservative: never drop a row the original filter keeps.</text>
+<g class="badge"><circle cx="76" cy="1180" r="9"/><text x="76" y="1184">2</text></g>
+<text class="p" x="92" y="1184">Literal and column types come from TypeSystemMapper (HoodieSchemaType).</text>
+<g class="badge"><circle cx="76" cy="1208" r="9"/><text x="76" y="1212">3</text></g>
+<text class="p" x="92" y="1212">A cast is stripped only if it preserves order (the #19475 class); otherwise the predicate is dropped.</text>
+<g class="badge"><circle cx="76" cy="1236" r="9"/><text x="76" y="1240">4</text></g>
+<text class="p" x="92" y="1240">support() declares what each system can translate or render; unsupported shapes are dropped, not guessed.</text>
+<g class="badge"><circle cx="76" cy="1264" r="9"/><text x="76" y="1268">5</text></g>
+<text class="p" x="92" y="1268">Kit: the #20439 oracle per engine (pruned rows == unpruned rows), per translator and renderer.</text>
+<g class="panel"><rect x="830" y="1108" width="740" height="196" rx="8"/></g>
+<text class="ph" x="846" y="1132">Why: resolves the notes in expression-today.svg</text>
+<g class="badge"><circle cx="856" cy="1152" r="9"/><text x="856" y="1156">1</text></g>
+<text class="p" x="872" y="1156">Every engine enters through ExpressionTranslator, not just Spark partition pruning.</text>
+<g class="badge"><circle cx="856" cy="1176" r="9"/><text x="856" y="1180">2</text></g>
+<text class="p" x="872" y="1180">Index planning and translation are written once and oracle-tested; evaluation is pluggable.</text>
+<g class="badge"><circle cx="856" cy="1200" r="9"/><text x="856" y="1204">3</text></g>
+<text class="p" x="872" y="1204">IndexLookup implementations give every engine every index; Hive gains data skipping.</text>
+<g class="badge"><circle cx="856" cy="1224" r="9"/><text x="856" y="1228">4</text></g>
+<text class="p" x="872" y="1228">Literals typed by TypeSystemMapper: no LocalDate typed as a timestamp holding epoch days.</text>
+<g class="badge"><circle cx="856" cy="1248" r="9"/><text x="856" y="1252">5</text></g>
+<text class="p" x="872" y="1252">Partition filters evaluated once; the metastore gets a rendered filter, not raw Catalyst.</text>
+<g class="badge"><circle cx="856" cy="1272" r="9"/><text x="856" y="1276">6</text></g>
+<text class="p" x="872" y="1276">One renderer serves HMS and Glue, wired from the sync client.</text>
+</svg>
