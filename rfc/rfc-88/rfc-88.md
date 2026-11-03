@@ -325,12 +325,14 @@ public interface HoodieRow {
   long getLong(int i);                       // INT64, TIME(micros)
   float getFloat(int i);
   double getDouble(int i);
-  byte[] getBinary(int i);                   // STRING as UTF-8, BINARY, FIXED, UUID
+  byte[] getBinary(int i);                   // STRING as UTF-8, BINARY, FIXED, UUID; may copy
+  void getBinaryRef(int i, BinaryRef ref);   // same value as a slice (buffer, offset, length); no copy
   long getDecimalUnscaledLong(int i, int precision, int scale);    // precision <= 18
   byte[] getDecimalUnscaledBytes(int i, int precision, int scale); // precision > 18, big-endian two's complement
   int getDate(int i);                        // epoch days
   long getTimestamp(int i, int precision);   // precision <= 6, in the column's unit
-  HoodieTimestamp getNanoTimestamp(int i, int precision);   // precision 7-9: epoch millis + nano of milli, full range
+  long getNanoTimestampMillis(int i);        // precision 7-9: epoch millis ...
+  int getNanoTimestampNanoOfMilli(int i);    // ... plus nano of milli, full range
   HoodieRow getRow(int i, int numFields);
   HoodieArray getArray(int i);               // same typed getters by index
   HoodieMap getMap(int i);                   // key and value HoodieArrays
@@ -363,13 +365,13 @@ final class HoodieSparkRow extends InternalRow {
 }
 ```
 
-| Engine | Write wrapper (implements `HoodieRow`) | Read view |
-|---|---|---|
-| Spark | `SparkRowWrapper` over `InternalRow` | `HoodieSparkRow extends InternalRow` |
-| Flink | `FlinkRowWrapper` over `RowData` | `HoodieFlinkRow implements RowData` |
-| Avro / Java client | `AvroRowWrapper` over `IndexedRecord` | `HoodieAvroRow implements IndexedRecord` |
-| Hive (read only) | n/a | copies into `ArrayWritable`; replaces Avro then `avroToArrayWritable` |
-| Trino (read only) | n/a | appends into Block builders for merged reads; replaces `HudiAvroSerializer` |
+| Engine | Write wrapper (implements `HoodieRow`) | Read: builder for row formats | Read: view over column batches |
+|---|---|---|---|
+| Spark | `SparkRowWrapper` over `InternalRow` | over `UnsafeRowWriter` | `HoodieSparkRow extends InternalRow` |
+| Flink | `FlinkRowWrapper` over `RowData` | over `BinaryRowWriter` | `HoodieFlinkRow implements RowData` |
+| Avro / Java client | `AvroRowWrapper` over `IndexedRecord` | over `GenericData.Record` | `HoodieAvroRow implements IndexedRecord` |
+| Hive (read only) | n/a | over `ArrayWritable`; replaces Avro then `avroToArrayWritable` | copies into `ArrayWritable` |
+| Trino (read only) | n/a | appends into Block builders; replaces `HudiAvroSerializer` | appends into Block builders |
 
 Today's engine writers already make these conversions at this boundary: the Parquet and Lance writers copy strings out
 (`getUTF8String(i).getBytes()` in Spark, `getString(i).toBytes()` in Flink), and all but Flink's Parquet writer build
@@ -378,14 +380,20 @@ costs less. ORC, HFile and Avro block writers convert every row to a `GenericRec
 Those paths get faster; for the direct engine writers (Spark and Flink Parquet and Lance) the target is parity, not a
 gain. What a wrapper adds is one interface call per field; the benchmarks in rollout step 4 measure it.
 
-On the read side, a `HoodieRow` is backed by what the reader decoded. Row formats (Avro and HFile blocks) decode into one
-reused `GenericHoodieRow` per reader, an array of canonical values like Paimon's `GenericRow`. Columnar formats
-(Parquet, Lance, ORC) expose a row view over the decoded column batch at a row index, like Spark's `ColumnarRow`, so no
-row is materialized. Reuse is safe because a caller that keeps a row copies it: the file group reader's buffer does so
-on every insert (`seal` / `toBinary`), as it already does for the reused row Spark's Avro deserializer returns today,
-and `copy()` on a read view materializes a standalone engine row. Section 2.4 walks the full path.
+On the read side, row formats (Avro and HFile blocks) decode through a builder straight into the engine's own row, and
+columnar formats (Parquet, Lance, ORC) expose a view over the decoded column batch at a row index, like Spark's
+`ColumnarRow`. Neither materializes a Hudi row. Section 2.4 walks the full path.
 
-Readers decode through a builder, so the decode target is pluggable without a per-engine decoder:
+`HoodieRow` is transient: a view over an engine row or a decoded batch, with no serializer, no stable binary layout, and
+never spilled, shuffled or retained. Ownership follows from that:
+
+* Views and the values they return (including `BinaryRef` slices and nested views) are borrowed, valid until the next
+  `replace`, `next()` or call on their parent.
+* A caller that keeps a row copies it into an engine row, through a builder or `copy()`. The file group reader's buffer
+  already does so on every insert (`seal` / `toBinary`). Retained rows are engine rows, owned by the engine and counted
+  by its memory manager and spill controls.
+
+Readers decode through a builder, so one decoder per format can produce every engine's row:
 
 ```java
 /** What a format's struct reader writes decoded values into. */
@@ -395,23 +403,26 @@ public interface HoodieRowBuilder<R> {
   void setLong(int i, long v);
   void setBinary(int i, byte[] v, int offset, int length);
   void setDecimalUnscaledLong(int i, long unscaled, int precision, int scale);
+  void setNanoTimestamp(int i, long epochMillis, int nanoOfMilli);
   ...                                    // one setter per HoodieRow getter
   R build();                             // reused; the caller copies a row it keeps
 }
 ```
 
-`GenericHoodieRow` is the default builder. An engine may supply its own, such as a Spark builder over `UnsafeRowWriter`
-that hands `UnsafeRow` straight to the file group reader, so a reader can produce engine rows directly with one decoder
-per format and one builder per engine. Columnar formats keep the batch view, which builds no row at all.
+Each engine supplies the builder for its own row: Spark over `UnsafeRowWriter`, Flink over `BinaryRowWriter`, Avro over
+`GenericData.Record`, Hive over `ArrayWritable`, Trino over its Block builders. That is one decoder per format and one
+builder per engine, with no intermediate row. `GenericHoodieRow`, an array of canonical values, exists only for tests
+and as the reference implementation.
 
 What each getter costs, for the write wrappers and read views alike:
 
 | Getter | Returns | Allocation |
 |---|---|---|
 | `getInt`, `getLong`, `getFloat`, `getDouble`, `getBoolean`, `getDate`, `getTimestamp`, `getDecimalUnscaledLong` | primitive | none beyond what the engine getter allocates (Flink's `DecimalData`, Spark's `Decimal` for non-`UnsafeRow` rows) |
-| `getBinary`, `getDecimalUnscaledBytes` | `byte[]` valid until the next `replace` | the same copy today's writers make (`getUTF8String(i).getBytes()`, `toBytes()`, `toUnscaledBytes()`); read views over a decoded buffer return it without copying |
-| `getRow`, `getArray`, `getMap` | a view, reused per nesting level, valid until the next call on its parent | none per value |
-| `getNanoTimestamp` | `HoodieTimestamp` | one object per value, as Flink's `TimestampData` today |
+| `getNanoTimestampMillis`, `getNanoTimestampNanoOfMilli` | primitives | none beyond the engine getter (Flink's `TimestampData`) |
+| `getBinaryRef` | fills a reused `BinaryRef` with the buffer, offset and length, borrowed | none: Spark's `UTF8String` and column-batch views hand over their own buffer |
+| `getBinary`, `getDecimalUnscaledBytes` | `byte[]`, borrowed | the same copy today's writers make (`getUTF8String(i).getBytes()`, `toBytes()`, `toUnscaledBytes()`); a copy when the value is a slice of a larger buffer, which is why format writers use `getBinaryRef` |
+| `getRow`, `getArray`, `getMap` | a view, reused per nesting level, borrowed | none per value |
 
 #### 2.2 One reader and writer per format
 
@@ -497,8 +508,8 @@ public interface VectorizedFileReader<B> extends Closeable {
 
 Parquet log blocks and native (v2) log files use `FileFormatIO` writers with an `OutputStream` target, as native logs
 already do through the factory today. Avro and HFile log blocks keep their Avro encoding on disk, but rows are encoded
-straight to Avro binary, so there is no `GenericRecord` per record. Reading them decodes straight into a `HoodieRow`,
-which engines see through their read view, instead of decoding to `IndexedRecord` and converting each record again.
+straight to Avro binary, so there is no `GenericRecord` per record. Reading them decodes straight into the engine's own
+row through its builder, instead of decoding to `IndexedRecord` and converting each record again.
 Merging stays in the FileGroupReader and its `RecordContext`.
 
 The full path for an Avro data block (inline log format, write version below 10):
@@ -546,19 +557,14 @@ Today:
 Proposed:
 
 1. Same: `deserializeRecords`.
-2. The `AvroBinaryFormatIO` reader decodes `BinaryDecoder` fields straight into one reused `GenericHoodieRow`.
-   **Full copy 1: the only decode.**
-3. `HoodieSparkRow.replace(hoodieRow)` exposes it as an `InternalRow` view, without copying.
-4. Same projection.
-5. Same insert: `UnsafeProjection` reads through the view, then `seal` copies. **Full copy 2.**
-6. Same merge.
+2. The `AvroBinaryFormatIO` reader decodes `BinaryDecoder` fields through Spark's `HoodieRowBuilder` into one reused
+   `UnsafeRow`. **Full copy 1: the only decode.**
+3. Same projection.
+4. Same insert: `toBinaryRow` returns the `UnsafeRow` as it is, then `seal` copies it. **Full copy 2.**
+5. Same merge.
 
-Result: the `IndexedRecord` and the second decode from step 3 disappear. Nothing new is materialized; the view adds one
-interface call per field while `UnsafeProjection` reads it. Bytes on disk are identical.
-
-Reusing one `HoodieRow` is safe because step 5 copies every record it keeps. With a Spark `HoodieRowBuilder` over
-`UnsafeRowWriter` (2.1), step 2 decodes straight into `UnsafeRow`, and step 5 skips its `UnsafeProjection`; the
-benchmarks decide whether it ships alongside the default builder.
+Result: the `IndexedRecord`, the second decode and the `UnsafeProjection` disappear, and no Hudi row sits in between.
+Bytes on disk are identical. Reusing one `UnsafeRow` is safe because step 4 copies every record it keeps.
 
 #### 2.5 Alternatives considered
 
@@ -902,5 +908,5 @@ Each step ships on its own. No migration is needed for existing tables.
   by master read back with the same values and file layouts.
 * **Expression oracle**: for every engine, rows returned with pruning equal rows returned without it.
 * **Benchmarks**: before each switch, per format and engine, against each existing direct writer and reader:
-  throughput, CPU and allocated bytes per row, on decimal-heavy, string-heavy and nested workloads as well as a mixed
-  one.
+  throughput, CPU, allocated bytes per row, GC time, retained heap and off-heap memory, and bytes copied, on long
+  strings, wide decimals, nanosecond timestamps, large nested rows and a mixed workload.
