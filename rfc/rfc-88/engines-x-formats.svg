@@ -211,7 +211,7 @@
 <g class="panel"><rect x="50" y="724" width="1520" height="130" rx="8"/></g>
 <text class="ph" x="66" y="748">The same shape on the type plane</text>
 <text class="p" x="66" y="772">Schema mapping has the same grid: engine types (StructType, RowType, TypeInfo, ...) x physical schemas (MessageType, Arrow, ORC, Avro).</text>
-<text class="p" x="66" y="792">Today it is filled pairwise (three Parquet schema paths, three Hive mappings). Section 1 collapses it the same way, through HoodieSchema:</text>
+<text class="p" x="66" y="792">Today it is filled pairwise (three Parquet schema paths, three Hive mappings). RFC-104 collapses it the same way, through HoodieSchema:</text>
 <text class="p" x="66" y="812">one TypeSystemMapper per engine or catalog plus one FormatSchemaMapper per format.</text>
 <text class="p" x="66" y="832">Values go through HoodieRow, types go through HoodieSchema: one hub per grid.</text>
 </svg>

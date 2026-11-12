@@ -33,52 +33,25 @@ Restructured in 2026 to build on `HoodieSchema` from [RFC-99](../rfc-99/rfc-99.m
 ([#20488](https://github.com/apache/hudi/pull/20488)) and hands its remaining types, translation layers and Avro-free
 internals to this RFC.
 
+The type plane (one mapper per boundary between `HoodieSchema` and each engine, format and catalog, and the types RFC-99
+left open) has since moved to [RFC-104](https://github.com/apache/hudi/pull/18661), so it does not wait on the
+reader / writer design here. The expression part of the first version is dropped. This RFC keeps the data plane: file
+readers and writers, `HoodieRecord` and `KeyGenerator`.
+
 ## Abstract
 
-Hudi represents a schema in four places: the engine (Spark, Flink, Trino, Hive), `HoodieSchema`, the physical file
-format (Parquet, Lance, ORC, HFile, Avro) and the catalog (HMS, Glue, BigQuery). Today every read, write, filter and sync
-path carries its own conversions between them, so the same logical type behaves differently depending on which engine
-and which path touched it, and every engine x format pair needs its own reader and writer code.
+On write, Hudi receives an engine row (`InternalRow`, `RowData`, `IndexedRecord`) and hands it to a file format
+(Parquet, Lance, ORC, HFile, Avro log blocks). Today every engine x format pair is its own writer, a detour through Avro,
+or missing, and the readers mirror that.
 
-This RFC splits the problem in two:
-
-* **Type plane.** `HoodieSchema` (RFC-99) is the hub. One mapper per boundary converts to and from it, and every mapper
-  declares, per type, whether it maps natively, lossily or not at all. Engines, formats and catalogs never map to each
-  other directly.
-* **Data plane.** The operations that move rows and predicates across those boundaries: write, read, filter / prune and
-  catalog sync. Formats read and write a single Hudi row type that engines wrap, and engine filters are translated into
-  Hudi `Expression` once and rendered out to readers and catalogs.
-
-The data plane uses the type plane; the type plane depends on nothing in the data plane, so it can land first.
+This RFC gives formats one row type to read and write, `HoodieRow`, which each engine wraps; one reader and one
+writer per format; and the `HoodieRecord` / `KeyGenerator` changes on top. It builds on two other RFCs: `HoodieSchema`
+(RFC-99) is the schema, and RFC-104's type plane decides the physical schema of every file. The type plane depends on
+nothing here, so the two proceed in parallel.
 
 ![Overview: type plane and data plane](overview.svg)
 
 ## Background
-
-### Schema conversions are duplicated per boundary
-
-`HoodieSchema` is Hudi's schema API (RFC-99), but the code that maps it to other systems is spread across engines and
-formats, and the copies disagree:
-
-* **Parquet `MessageType` is produced three ways**: by Spark's row writer from `StructType`
-  (`HoodieRowParquetWriteSupport`), by Flink's `ParquetSchemaConverter`, and by the parquet-avro path through Hudi's copy
-  of the Avro converter. Lance's Arrow schema is produced two ways (Spark from `StructType` with a BLOB patch, Flink from
-  `HoodieSchema`).
-* **Three Hive mappings**: `HiveTypeUtils` (hadoop-mr), `HiveSchemaUtil` (Hive sync) and the Flink catalog's
-  `HiveSchemaUtils`. Trino builds its column types from the Hive type strings in the metastore rather than from
-  `HoodieSchema`.
-* **No loss is declared anywhere.** Examples, all on master:
-  * Flink TINYINT / SMALLINT and Spark `ByteType` / `ShortType` map to `HoodieSchemaType.INT`, so the width is lost
-    from the table schema and what reaches the file depends on the write path: Spark's `bulk_insert` writes INT32 +
-    `INT(16)` (Lance `Int16`), Spark's other paths write plain INT32 (Lance `Int32`), Spark's row writer throws on
-    `ByteType`, and Flink cannot write the column at all
-    ([apache/hudi#18974](https://github.com/apache/hudi/issues/18974)). RFC-99's mapping table says SMALLINT is
-    `INT32 + INTEGER(16)`. Section 5 traces it end to end.
-  * UUID is declared `binary` by Hive sync and `STRING` by BigQuery sync.
-  * BigQuery sync maps every DECIMAL to `NUMERIC`, which holds at most scale 9.
-  * Hive sync stores VECTOR as `binary`.
-
-![Today: schema conversions per engine](type-plane-today.svg)
 
 ### Rows take detours through Avro, and readers and writers exist per engine x format
 
@@ -102,215 +75,46 @@ the default, log files are native base-format files written through the same fac
 
 ![Today: file writers and readers per engine](writer-reader-today.svg)
 
-### Expressions are translated per engine
-
-Hudi's `Expression` (in `hudi-common`) is used by Spark partition pruning, Hive / Glue sync filters and metadata-table key
-lookups only. Everything else runs on each engine's own expression model:
-
-* Column-stats data skipping is implemented three times: Spark rewrites Catalyst into min / max Catalyst and evaluates
-  it as a DataFrame (`DataSkippingUtils`), Flink builds `ExpressionEvaluators` over `RowData`, Trino builds `Domain`s.
-  Order-breaking casts and overflow bugs are fixed per engine.
-* Index coverage differs: the expression index and metadata-table bloom filters are Spark only; Hive has no data
-  skipping.
-* Literal typing differs: `SparkFilterHelper` maps Spark types to `InternalSchema` types (a `LocalDate` literal is typed
-  as a timestamp holding epoch days), Flink switches on `LogicalTypeRoot`, Trino builds `Domain`s.
-
-![Today: expression and filter pushdown per engine](expression-today.svg)
-
 ## Goals
 
-* One mapping per boundary between `HoodieSchema` and each engine, format and catalog, with declared loss and shared
-  tests, so a type behaves the same everywhere.
 * One reader and one writer per file format, usable by every engine without per-record Avro conversion.
-* One translation of engine filters into Hudi `Expression`, so partition pruning, data skipping and catalog filters
-  behave the same for every engine.
 
 ## Non-goals
 
-* Rewriting existing files. Avro / HFile log blocks keep their encoding. Where today's write paths differ (the
-  `INT(16)` label, list structure, `bytes`-backed decimals), the converged mapper only emits layouts that a current
-  writer already emits and keeps today's knobs as `PhysicalOptions` with today's defaults, so supported readers already
-  read every file it writes. A layout no current writer produces waits for a table-version bump.
-* Replacing the persisted schema. It stays Avro JSON plus Hudi logical-type properties, read and written through
-  `HoodieSchema.parse` / `toString` (RFC-99); the first version of this RFC proposed a new persisted format.
-* Schema evolution semantics, field ids and retiring `InternalSchema`, owned by
+* Rewriting existing files. Avro / HFile log blocks keep their encoding, and a format writes the same bytes for the
+  same physical schema as today.
+* Schema mapping (the type plane), schema evolution and field ids, owned by
   [RFC-104](https://github.com/apache/hudi/pull/18661).
+* Translating engine filters into Hudi `Expression` and a shared metadata-table index planner, proposed in the first
+  version of this RFC and dropped. Readers still accept an optional Hudi `Expression` filter, the one `hudi-common` has
+  today.
 * The record merger API (RFC-101). Payload-based and custom record merging still convert records to Avro; removing that
   belongs to payload deprecation (RFC-97) and the merger API.
 * Replacing engine vectorized readers, or merging Flink's per-version copies of its vectorized Parquet reader; they
-  only move behind `VectorizedFileReader` (2.3).
+  only move behind `VectorizedFileReader` (1.3).
 
 ## Design
 
 | Piece | Owner |
 |---|---|
 | `HoodieSchema`, the type set and RFC-99's interoperability table (the spec) | RFC-99 |
-| Type plane: mappers, `TypeSupport`, catalog renderers, shared tests; the types RFC-99 left open; Avro-free internals | this RFC |
-| Data plane: reader / writer, `HoodieRecord` / `KeyGenerator`, expressions | this RFC |
-| Field ids, schema evolution, retiring `InternalSchema` | RFC-104 |
+| Type plane: mappers, `TypeSupport`, catalog renderers, shared tests; the types RFC-99 left open; Avro-free internals | RFC-104 |
+| Field ids, schema evolution | RFC-104 |
+| Data plane: reader / writer, `HoodieRecord` / `KeyGenerator` | this RFC |
 
-### 1. Type plane: mapping `HoodieSchema` to every boundary
+Readers and writers here take their physical schema from RFC-104's `FormatSchemaMapper`. RFC-104's first type-plane
+step puts today's converters behind that interface, so this RFC does not wait for the type plane to converge.
 
-![Proposed: type plane](type-plane-proposal.svg)
-
-Every mapper converts between `HoodieSchema` and exactly one other type system. Rules:
-
-1. Engines, formats and catalogs never map to each other directly; everything goes through `HoodieSchema`.
-2. Every mapper declares, per `HoodieSchemaType` and options, whether it maps `NATIVE`, `LOSSY` (with a reason) or
-   `UNSUPPORTED`. Writing an unsupported type fails fast. `LOSSY` may drop type identity, never values; a format that
-   cannot store a type's values exactly declares it `UNSUPPORTED`.
-3. `fromX(toX(s))` equals `s` for every `NATIVE` type. For `LOSSY` types, the hint (the table schema) or a marker
-   stored in the target restores the type, as described below.
-4. Every mapper passes the same shared test kit, and RFC-99's interoperability table is its expected output.
-5. Types are added to `HoodieSchema` first, then to every mapper. This rule is not negotiable. Two tiers:
-   * Anything that affects values, physical layout, comparison or ordering (integer width, signedness, decimal
-     precision and scale, timestamp unit, time zone semantics, collation, CHAR padding) is a `HoodieSchemaType`, which
-     every mapper must declare. An engine type that needs one and has none fails fast in `fromTypeSystem` instead of
-     widening.
-   * Details that affect none of these (VARCHAR length, a timestamp's declared precision within its unit such as Flink
-     TIMESTAMP(4) stored as micros, engine column options) are per-field properties on `HoodieSchema`
-     (`HoodieSchemaField.getProp` / `addProp`). Every mapper preserves them and may ignore them.
-     VARCHAR(n) qualifies because its values, bytes and ordering are those of STRING; only the write-time length check
-     is engine-specific. CHAR(n) does not: Spark and Hive pad it and compare it ignoring trailing spaces.
-
-   Storing a semantic distinction in a property of a wider type (SMALLINT as INT32 plus an engine annotation) is not
-   allowed: a property one mapper reads and another ignores is how Spark and Flink write the same SMALLINT column
-   differently today, and every such property becomes an unwritten type that each new mapper must rediscover. With this
-   rule, nothing is lost on the way in and writers never need the engine schema.
-
-**Why writers take two schemas today.** Each carries something the other lacks. The engine schema has integer width:
-Spark's `ByteType` and `ShortType` become INT in `HoodieSchema`, so only a writer that still holds the DataFrame's
-`StructType` (Spark's `bulk_insert`) writes INT(16); every path that rebuilds its schema from `HoodieSchema` writes plain
-INT32 (section 5). `HoodieSchema` has timestamp millis,
-decimal byte width, VECTOR, VARIANT and BLOB, which the Spark writer reads from it. Rule 5 moves the first group into
-`HoodieSchema`; the second is already there, and only the mappers read it. Writers then take `HoodieSchema` alone.
-
-**Where identity is lost.** Values are never lost (rule 2). Type identity is, and only on arrows that leave
-`HoodieSchema`:
-
-```
-Write:  Engine --(1)--> HoodieSchema --(2)--> Format
-Read:   Format --(3)--> HoodieSchema --(4)--> Engine
-Sync:                   HoodieSchema --(5)--> Catalog
-```
-
-| Arrow | Lossy | Cases on master |
-|---|---|---|
-| (1) Engine to `HoodieSchema` | never (rule 5) | restores what (4) dropped |
-| (2) `HoodieSchema` to format | a few types | Parquet: VECTOR as FIXED_LEN_BYTE_ARRAY, BLOB as a plain group, UUID as string (the UUID annotation is off by default). Avro: INT16 as `int` once INT16 lands |
-| (3) Format to `HoodieSchema` | never | restores what (2) dropped |
-| (4) `HoodieSchema` to engine | most cases | Spark: TIMESTAMP(3) as micros, TIME as int / long, UUID and ENUM as string, FIXED as binary, VECTOR as array, BLOB as struct. Flink: the same, except timestamps and TIME keep their precision |
-| (5) `HoodieSchema` to catalog | some types | Hive: VECTOR, UUID and FIXED as binary, ENUM as string, BLOB as struct. Never read back, so nothing to restore |
-
-**How identity comes back.** On (1) and (3), `fromTypeSystem(x, hint)` and `fromPhysicalSchema(x, hint)` resolve each
-column in this order:
-
-1. `NATIVE`: the target's own type is exact, such as Parquet INT(16) or TIMESTAMP(MILLIS).
-2. `LOSSY` with a hint: the hint is the table schema, including its per-field properties, which Hudi already persists
-   as `HoodieSchema` JSON: `schema` in
-   each commit's metadata, `hoodie.table.create.schema` in `hoodie.properties`, the `SCHEMA` header of each log block,
-   and `hoodie.avro.schema` in the write config during a write. It never crosses a lossy arrow, so it restores the
-   exact type. Every Hudi read and write has one.
-3. `LOSSY` without a hint, as in `CREATE TABLE` from engine DDL or a reader without the timeline: a per-column
-   `hudi_type` marker stored in the target. Today Spark keeps it in `StructField` metadata (VECTOR, BLOB), and Parquet
-   and Lance keep `hoodie.vector.columns` in the file footer (VECTOR only). Every `LOSSY` declaration names its marker,
-   and targets with field or file metadata write one for every `LOSSY` column. Flink types have no metadata, so Flink
-   relies on the hint.
-
-The shared test kit checks `from(to(s))` equals `s` for every `LOSSY` type, once with the hint and once with the marker
-alone.
-
-**Example: VECTOR(128, FLOAT), written and read by Spark.**
-
-1. (1) Spark hands over `emb array<float>`. The hint says `emb` is VECTOR(128, FLOAT), so `SparkTypeMapper` returns
-   VECTOR. On `CREATE TABLE`, before any hint exists, the `hudi_type` marker on the `StructField` says the same.
-2. (2) `ParquetSchemaMapper` writes FIXED_LEN_BYTE_ARRAY(512) and the footer marker `emb:VECTOR(128)` (FLOAT is the
-   default). `LOSSY`: Parquet has no vector type, but all 512 bytes are kept.
-3. (3) `ParquetSchemaMapper` sees FIXED_LEN_BYTE_ARRAY(512) and returns VECTOR(128, FLOAT) from the hint, or from the
-   footer marker for a reader without the timeline. With neither, the column reads as FIXED(512), values intact.
-4. (4) `SparkTypeMapper` returns `array<float>` with the `hudi_type` marker in the field metadata. `LOSSY`: Spark has no
-   vector type, and the next write restores it in step 1.
-
-A few more types, written and read back by Spark:
-
-| Type | (1) Spark to `HoodieSchema` | (2) `HoodieSchema` to Parquet | (4) Spark reads back |
-|---|---|---|---|
-| SMALLINT | `ShortType` to INT16 (today INT) | INT32 + INT(16), the same from Flink | `ShortType`, `NATIVE` |
-| TIMESTAMP(3) | `TimestampType`; the hint keeps millis | INT64 + TIMESTAMP(MILLIS), `NATIVE` | `TimestampType` (micros), `LOSSY` |
-| DECIMAL(10,2) as fixed(8) | `DecimalType(10,2)`; the hint keeps the declared width | FIXED_LEN_BYTE_ARRAY(8), `NATIVE` | `DecimalType(10,2)`, `NATIVE` |
-| Flink TIMESTAMP(9) | no `HoodieSchema` type: fails fast, as today | n/a until nanosecond TIMESTAMP lands | n/a |
-
-Narrowing a value to the declared column type on write (Spark micros into a millis column) is a cast to the table
-schema, as today, not a mapper loss.
-
-```java
-public final class TypeSupport {
-  public enum Level { NATIVE, LOSSY, UNSUPPORTED }
-  Level level();
-  String reason();                  // required for LOSSY, e.g. "VECTOR stored as Hive binary"
-}
-
-/** Engines and catalogs that have their own type system: Spark, Flink, Trino, Hive, BigQuery. */
-public interface TypeSystemMapper<T> {
-  String typeSystem();
-  T toTypeSystem(HoodieSchema schema, MappingOptions opts);
-  HoodieSchema fromTypeSystem(T type, Option<HoodieSchema> hint);
-  TypeSupport support(HoodieSchemaType type, MappingOptions opts);
-}
-
-/** File formats: the only place a physical schema is decided. */
-public interface FormatSchemaMapper<P> {
-  HoodieFileFormat format();
-  P toPhysicalSchema(HoodieSchema schema, PhysicalOptions opts);   // legacy list / decimal, NTZ, shredding, blob encoding
-  HoodieSchema fromPhysicalSchema(P physical, Option<HoodieSchema> hint);   // HoodieSchemaRepair folds in here
-  TypeSupport support(HoodieSchemaType type, PhysicalOptions opts);
-}
-
-/** Catalog sync: table-level rules on top of a TypeSystemMapper. Types turn lossy only inside the mapper. */
-public interface CatalogSchemaRenderer<C> {
-  String catalog();
-  C render(HoodieSchema schema, List<String> partitionFields, SyncOptions opts);
-  SchemaDifference diff(HoodieSchema tableSchema, C current);
-}
-```
-
-Implementations, and what each replaces:
-
-| Interface | Implementation | Replaces |
-|---|---|---|
-| `TypeSystemMapper` | `SparkTypeMapper` | `HoodieSparkSchemaConverters`, `SparkFilterHelper.convertDataType`; `SparkInternalSchemaConverter` once RFC-104 retires `InternalSchema` |
-| | `FlinkTypeMapper` | `HoodieSchemaConverter` (Flink) |
-| | `HiveTypeMapper` | `HiveTypeUtils`; the type part of `HiveSchemaUtil` and the Flink catalog's `HiveSchemaUtils` |
-| | `TrinoTypeMapper` | column types read from HMS Hive type strings |
-| | `BigQueryTypeMapper` | the type switch in `BigQuerySchemaResolver` |
-| `FormatSchemaMapper` | `ParquetSchemaMapper` | the parquet-avro converter copy, Flink `ParquetSchemaConverter`, the row writer's own derivation |
-| | `ArrowSchemaMapper` (Lance) | Spark `LanceArrowUtils` path, `HoodieFlinkLanceArrowUtils` |
-| | `AvroSchemaMapper` | `HoodieSchema.toAvroSchema()` |
-| | `OrcSchemaMapper` | `AvroOrcUtils` |
-| `CatalogSchemaRenderer` | `HiveCatalogRenderer` (HMS, Glue, ADB, Flink `HoodieHiveCatalog`) | `HiveSchemaUtil`, the HMS schema diff |
-| | `SparkPropsRenderer` | `SparkSchemaUtils` (schema JSON) and `SparkDataSourceTableUtils` (`spark.sql.sources.schema.*` properties) |
-| | `BigQueryRenderer` | the table part of `BigQuerySchemaResolver` |
-
-Mappers are discovered with `ServiceLoader` through a `SchemaMappers` registry, so engine and sync modules plug in
-without `hudi-common` depending on them.
-
-The logical types RFC-99 specified but did not implement (TINYINT, SMALLINT, unsigned integers, FLOAT16, nanosecond
-TIMESTAMP, LARGE_STRING, LARGE_BINARY, DATE64, DURATION, DICTIONARY) land here, each together with its declaration in
-every mapper and its rows in the shared tests. CHAR(n) is added the same way, though RFC-99 did not specify it. Until a
-type lands, engines keep today's mapping for it (CHAR to STRING with padded values, TINYINT and SMALLINT to INT); rule
-5's fail-fast applies to a type only once its `HoodieSchemaType` exists (rollout step 2). A type is not
-done until every mapper declares it. Each new type also specifies how it persists in the Avro JSON schema (a
-logical-type property old readers ignore) so older readers degrade to the base type.
-
-### 2. Reader / writer
+### 1. Reader / writer
 
 ![Proposed: file reader and writer interfaces](writer-reader-proposal.svg)
 
 What the reader / writer layer has to guarantee, whatever the engine, operation or format:
 
 1. **The table schema decides the file.** Every write builds its file schema from the table's `HoodieSchema` through
-   the format's `FormatSchemaMapper`. No writer reads an engine schema to decide what lands on disk, so `bulk_insert`
-   and upsert, or Spark and Flink, cannot write the same column differently (section 5 shows what happens today).
+   the format's `FormatSchemaMapper` (RFC-104). No writer reads an engine schema to decide what lands on disk, so
+   `bulk_insert` and upsert, or Spark and Flink, cannot write the same column differently (RFC-104's SMALLINT case
+   study shows what happens today).
 2. **Each decision is made once.** How a type is stored in a format lives in that format's mapper and writer. How an
    engine reads or builds its own rows lives in that engine's wrapper and builder. Neither is repeated per engine and
    format pair.
@@ -319,18 +123,18 @@ What the reader / writer layer has to guarantee, whatever the engine, operation 
 4. **Nothing new to own.** The boundary between engine code and format code is a transient view. Rows that are kept,
    spilled or shuffled stay engine rows, with the engine's serializers and memory accounting.
 
-#### 2.1 One boundary between engine code and format code
+#### 1.1 One boundary between engine code and format code
 
 Properties 1 and 2 need one boundary that format code reads and writes through, and that every engine implements for
 its own rows. Formats read values through `HoodieRow` (writes) and write values through `HoodieRowBuilder` (reads). A
 typed-getter boundary is a common shape: Spark's own Parquet and Arrow writers read through `SpecializedGetters`, which
 both `InternalRow` and `ArrayData` implement; Iceberg's generic data path uses `StructLike`; Paimon's engine adapters
 (`FlinkRowWrapper`, `FlinkRowData`) wrap its `InternalRow`. This RFC takes only that boundary, not Paimon's binary rows,
-memory segments, serializers or format readers (2.5). It grows the `StructLike` interface that `hudi-common` already uses
+memory segments, serializers or format readers (1.5). It grows the `StructLike` interface that `hudi-common` already uses
 for metadata-table index evaluation, with typed getters so values are not boxed.
 
 `HoodieRow` replaces only code Hudi owns: every writer, and Hudi's own readers. Engine-owned read fast paths stay beside
-it (2.3), bound to the same physical schema and plan. A consequence is one adapter per engine and one encoder per
+it (1.3), bound to the same physical schema and plan. A consequence is one adapter per engine and one encoder per
 format, instead of one per pair:
 
 ![Engines x formats: N x M classes, or N + M through one row type](engines-x-formats.svg)
@@ -361,9 +165,9 @@ public interface HoodieRow {
 
 Each engine provides a write wrapper, a read builder and a read view. Wrappers are reused across rows (`replace(row)`),
 and so are the wrappers `getRow`, `getArray` and `getMap` return, one per nesting level.
-Conversions happen once per logical type inside them. For nanosecond TIMESTAMP (section 1), a nanosecond `long` would
-overflow outside roughly 1677-2262, so precision above 6 uses a two-part value, as Flink's `TimestampData` does. Read
-views do not copy values:
+Conversions happen once per logical type inside them. For nanosecond TIMESTAMP (a type RFC-104 adds), a nanosecond
+`long` would overflow outside roughly 1677-2262, so precision above 6 uses a two-part value, as Flink's `TimestampData`
+does. Read views do not copy values:
 
 ```java
 /** Write: an engine row seen as a HoodieRow. */
@@ -398,11 +202,11 @@ Today's engine writers already make these conversions at this boundary: the Parq
 decimals through `BigDecimal`. A wrapper moves those conversions rather than adding them, and an unscaled `long` decimal
 costs less. ORC, HFile and Avro block writers convert every row to a `GenericRecord` first, which a wrapper removes.
 Those paths get faster; for the direct engine writers (Spark and Flink Parquet and Lance) the target is parity, not a
-gain. What a wrapper adds is one interface call per field; the benchmarks in rollout step 4 measure it.
+gain. What a wrapper adds is one interface call per field; the benchmarks in rollout step 2 measure it.
 
 On the read side, row formats (Avro and HFile blocks) decode through a builder straight into the engine's own row, and
 columnar formats (Parquet, Lance, ORC) expose a view over the decoded column batch at a row index, like Spark's
-`ColumnarRow`. Neither materializes a Hudi row. Section 2.4 walks the full path.
+`ColumnarRow`. Neither materializes a Hudi row. Section 1.4 walks the full path.
 
 `HoodieRow` is transient: a view over an engine row or a decoded batch, with no serializer, no stable binary layout, and
 never spilled, shuffled or retained. Ownership follows from that:
@@ -448,10 +252,10 @@ Read cost on Hudi's own readers: no serialization and no extra copy of the row, 
 the engine's row and columnar views read the batch in place. What remains is call overhead: one interface call per field
 into a builder, and two per field for a columnar view wrapped by an engine view (`HoodieSparkRow.getInt` calls the
 `HoodieRow` view, which reads the column vector), against one in Spark's `ColumnarRow`. Against the Avro-based readers
-these replace, reads still get faster (2.4). Lance has per-engine readers today, so it is the case to benchmark; a pair
+these replace, reads still get faster (1.4). Lance has per-engine readers today, so it is the case to benchmark; a pair
 that regresses keeps its existing reader.
 
-#### 2.2 One reader and writer per format
+#### 1.2 One reader and writer per format
 
 ```java
 /** One implementation per file format. */
@@ -518,10 +322,10 @@ Parquet and HFile bytes. A missing combination becomes a missing implementation 
 `HoodieFileWriter` stays the API that write handles call, with `HoodieRecord` and the record key as today:
 `write(recordKey, record, schema)`, `writeWithMetadata`, `canWrite` and footer metadata. One implementation per format
 sits on top of `FileFormatIO`. It keeps today's key, bloom-filter and rollover bookkeeping, prepends meta fields as a
-view over the row (as `HoodieInternalRow` does for Spark today), and passes `record.asRow()` (section 3) to the format's
+view over the row (as `HoodieInternalRow` does for Spark today), and passes `record.asRow()` (section 2) to the format's
 `FileWriter`. Only the encoding below that line is shared across engines.
 
-#### 2.3 Engine fast paths
+#### 1.3 Engine fast paths
 
 Engine batch readers stay: Spark's vectorized Parquet and Arrow readers, Flink's vectorized Parquet reader and Trino's
 Page source. So do engine-native row readers that already build engine rows from the format without Avro, such as
@@ -535,7 +339,7 @@ public interface VectorizedFileReader<B> extends Closeable {
 }
 ```
 
-#### 2.4 Log blocks
+#### 1.4 Log blocks
 
 Parquet log blocks and native (v2) log files use `FileFormatIO` writers with an `OutputStream` target, as native logs
 already do through the factory today. Avro and HFile log blocks keep their Avro encoding on disk, but rows are encoded
@@ -597,7 +401,7 @@ Proposed:
 Result: the `IndexedRecord`, the second decode and the `UnsafeProjection` disappear, and no Hudi row sits in between.
 Bytes on disk are identical. Reusing one `UnsafeRow` is safe because step 4 copies every record it keeps.
 
-#### 2.5 Alternatives considered
+#### 1.5 Alternatives considered
 
 * **Per-engine subclasses of each format's struct writer and reader** (`SparkXFormatStructWriter`,
   `FlinkXFormatStructWriter`, ...), as sketched in the first version of this RFC. Once applied to every format this is
@@ -607,22 +411,22 @@ Bytes on disk are identical. Reusing one `UnsafeRow` is safe because step 4 copi
   `ParquetValueWriters` cover primitives and the struct / repeated base classes, and each engine supplies its own writers
   for strings, UUIDs, three decimal encodings, timestamps, binary, arrays, maps and structs (about 550 lines per engine
   for Parquet alone), again for ORC and Avro. Compared on maintenance, conversion and performance:
-  * Schema drift (the `INT(16)` annotation, three `MessageType` derivations) is fixed by the section 1 mappers in
+  * Schema drift (the `INT(16)` annotation, three `MessageType` derivations) is fixed by RFC-104's mappers in
     either model.
   * Maintenance: this model writes each engine's value code once per format; `HoodieRow` writes it once per engine.
     Every new format needs per-engine value code before an engine can write it, which is why Spark and Flink cannot
     write ORC today and Flink cannot write Vortex.
   * Conversion: the same in both. A wrapper runs the conversion the engine-specific value writer would run, once per
-    value, without materializing a row (2.1, 2.4).
+    value, without materializing a row (1.1, 1.4).
   * Performance: `HoodieRow` adds one interface call per field, measured against today's writers before each format
-    switches (rollout step 4). Engine-native paths stay where a benchmark shows they matter (`VectorizedFileReader`,
-    the row-builder follow-up in 2.4).
+    switches (rollout step 2). Engine-native paths stay where a benchmark shows they matter (`VectorizedFileReader`,
+    the row-builder follow-up in 1.4).
 * **Delta Kernel's engine handlers**: the engine reads and writes files with its own code. Adopted only for the
   vectorized fast paths above.
 * **Keep each engine's own writers and remove only the Avro step** (vinothchandar's review of the first version: a Flink
   Parquet writer should write `RowData` without conversions). This is today's shape minus Avro; it keeps one writer per
   engine x format, with the maintenance cost above. The copy a wrapper makes is the one engine writers already make
-  (2.1).
+  (1.1).
 * **Paimon's full data model.** Paimon began as Flink Table Store and carries Flink's data layer: `InternalRow` is
   based on Flink's code, with `BinaryRow`, `BinaryString`, `MemorySegment` memory management, `InternalRowSerializer`,
   and its own Parquet and ORC readers and column vectors. An LSM store needs that, since it sorts, spills and stores
@@ -631,15 +435,15 @@ Bytes on disk are identical. Reusing one `UnsafeRow` is safe because step 4 copi
   * Typed getters and engine adapters: adopted (`HoodieRow`, wrappers, views).
   * Binary rows, memory segments, serializers: not adopted. Rows that are kept are engine rows (`BufferedRecord` /
     `RecordContext`), and `HoodieRow` is transient.
-  * Format readers that every engine reads through: not adopted. Engine vectorized and native row readers stay (2.3),
+  * Format readers that every engine reads through: not adopted. Engine vectorized and native row readers stay (1.3),
     and readers decode into the engine's own row through its builder.
 * **`HoodieRecord` at the format boundary.** Three shapes: (a) keep `HoodieRecord` at `HoodieFileWriter` and give
-  formats a `HoodieRow` view through `asRow()`, adopted (2.2, 3); (b) typed getters on `HoodieRecord` itself, rejected
+  formats a `HoodieRow` view through `asRow()`, adopted (1.2, 2); (b) typed getters on `HoodieRecord` itself, rejected
   for now because nested structs, arrays and map entries still need a row type with no key or location, and abstract
   getters touch every `HoodieRecord` implementation, its Kryo serialization and payload code; (c) `HoodieRow` at the
   handle API, unnecessary since handles need the key and metadata `HoodieRecord` carries.
 
-### 3. HoodieRecord and KeyGenerator
+### 2. HoodieRecord and KeyGenerator
 
 Engine-specific `HoodieRecord` implementations keep engine rows on the write path (RFC-46). Spark, Hive and Flink
 (`HoodieFlinkRecord`) now have them. `HoodieRecord` stays the carrier at the writer boundary and gains one method, the
@@ -669,285 +473,39 @@ public interface KeyGenerator<R> extends Serializable {
 ```
 
 With `HoodieRow` in place, a key generator can also be written once against `HoodieRow` and serve every engine through
-the write wrappers; that is a follow-up. Key fields defined as functions of columns (the `Expression` operators in 4.1)
-build on the same follow-up.
-
-### 4. Expressions
-
-![Proposed: expression interfaces](expression-proposal.svg)
-
-#### 4.1 Expression
-
-`Expression` in `hudi-common` stays the one representation. Its operators are extended with functions and aggregates
-for expression indexes, as proposed originally:
-
-```java
-public interface Expression extends Serializable {
-  enum Operator {
-    TRUE("TRUE", "true"),
-    FALSE("FALSE", "false"),
-    AND("AND", "&&"),
-    OR("OR", "||"),
-    GT(">", ">"),
-    ...
-    // date function
-    DAY("DAY", "day"),
-    HOUR("HOUR", "hour"),
-    ...
-    // string function
-    UPPER("UPPER", "upper"),
-    TRIM("TRIM", "trim"),
-    ...
-    // aggregate function
-    COUNT("COUNT", "count"),
-    MAX("MAX", "max"),
-    MIN("MIN", "min")
-  }
-}
-```
-
-Literal and column types move from `InternalSchema` types to `HoodieSchemaType`, mapped by the same `TypeSystemMapper`
-as columns. The `ExpressionVisitor` and `StructLike` from the original proposal stay; `StructLike` grows into `HoodieRow`
-(section 2.1).
-
-#### 4.2 Translating in and rendering out
-
-```java
-/** Engine filter to Hudi Expression: Spark, Flink, Hive, Trino. */
-public interface ExpressionTranslator<E> {
-  String system();
-  Option<Expression> toHudi(E expr, HoodieSchema schema);
-  ExpressionSupport support(Operator op, HoodieSchemaType type);
-}
-
-/** Hudi Expression to a catalog or reader filter: HMS, Glue, Parquet FilterPredicate, Spark Filter. */
-public interface ExpressionRenderer<T> {
-  String target();
-  Option<T> render(Expression expr, MappingOptions opts);
-}
-```
-
-Rules:
-
-1. Translation and rendering are conservative: the result keeps every row the original keeps. NOT is first pushed down
-   to the leaves; then an untranslatable AND conjunct is dropped, an OR with an untranslatable side is dropped whole, and
-   a NOT over an untranslatable leaf is dropped.
-2. A cast is stripped only if it preserves order; otherwise the predicate is dropped.
-3. `support()` declares what each system translates; unsupported shapes are dropped, not guessed.
-
-| Implementation | Replaces |
-|---|---|
-| `SparkTranslator` | `SparkFilterHelper`, the translation half of `DataSkippingUtils`, the key extraction in the record index and bloom support |
-| `FlinkTranslator` | `ExpressionUtils` and evaluator building in `ExpressionEvaluators` |
-| `HiveTranslator` | new; gives Hive metadata-table data skipping |
-| `TrinoTranslator` | the `Domain` predicates in the `Hudi*IndexSupport` classes |
-| `HmsRenderer`, `GlueRenderer` | `FilterGenVisitor`, `GlueFilterGenVisitor` |
-| `ParquetRenderer` | Flink `ExpressionPredicates`; usable by any parquet-mr reader |
-| `SparkFilterRenderer` | feeds Spark's vectorized Parquet reader |
-
-#### 4.3 Integration with metadata-table indexes
-
-Partition pruning evaluates the Hudi `Expression` once in `hudi-common`
-(`HoodieTableMetadata.getPartitionPathWithPathPrefixUsingFilterExpression`, which exists today) for every engine. Data
-skipping goes through one planner:
-
-```java
-public interface IndexPlanner {
-  List<IndexLookup> plan(Expression filter, HoodieSchema schema, Set<MetadataPartitionType> available);   // order overridable per engine
-}
-
-/** One per index type: column stats, partition stats, expression index, record index, bloom filters, secondary index. */
-public interface IndexLookup {
-  MetadataPartitionType index();
-  CandidateFiles lookup(Expression filter, HoodieTableMetadata mdt, StatsEvaluator eval, HoodieEngineContext ctx);   // ctx distributes key probes
-}
-
-/** How stats-based lookups evaluate the filter. */
-public interface StatsEvaluator {
-  CandidateFiles prune(Expression filter, MetadataPartitionType index, HoodieTableMetadata mdt);
-}
-```
-
-`StatsEvaluator` has two implementations. `HudiStatsEvaluator` evaluates in `hudi-common` over metadata-table stats read
-as `StructLike` (the `Evaluator` from the original proposal). Engine-native evaluators, such as a `SparkStatsEvaluator`
-over DataFrames, keep engine-specific execution where it is faster. Every engine gets the same index coverage either
-way, because the lookups are shared.
-
-### 5. Case study: one SMALLINT column
-
-One `SMALLINT` column, traced through master
-([b0d16f9](https://github.com/apache/hudi/tree/b0d16f94b3b5f4ce790a9a09e41ebf891b35a53e)) and through this design.
-
-**Today.** What lands in the file for the same column, by engine, operation and format:
-
-| Engine, operation | Parquet | Lance | ORC | Vortex | Avro log block (write version < 10) | Native log file (version 10) |
-|---|---|---|---|---|---|---|
-| Spark `bulk_insert` (row writer, the default) | INT32 + `INT(16)` | `Int16` | unsupported | unsupported | n/a | n/a |
-| Spark upsert, insert, compaction, clustering (SPARK record type) | INT32 | `Int32` | throws | 32-bit | Avro `int` | INT32 |
-| Spark upsert, insert, compaction, clustering (AVRO record type, the default) | INT32 | unsupported | `int` | unsupported | Avro `int` | INT32 |
-| Flink, any operation | fails | fails | unsupported | unsupported | fails | fails |
-
-Why each row differs:
-
-* `bulk_insert` keeps the DataFrame's own `StructType` (`HoodieDatasetBulkInsertHelper`), and
-  `HoodieInternalRowFileWriterFactory` passes it to the writers, so they see `ShortType`. That factory only writes
-  Parquet and Lance.
-* Every other Spark path rebuilds the `StructType` from `HoodieSchema` (`HoodieSparkFileWriterFactory`), after
-  `HoodieCreateRecordUtils` widens short to int, so the writers see `IntegerType`. That factory throws for ORC and HFile.
-* The AVRO record type converts rows to `GenericRecord` against the `HoodieSchema` Avro schema, where the column is
-  `int`; `HoodieAvroFileWriterFactory` writes Parquet, ORC and HFile, not Lance or Vortex.
-* Flink rebuilds a `RowType` from `HoodieSchema` (column `INT`) for every writer, and `ParquetRowDataWriter`,
-  `LanceRowDataWriter` and the Avro converter behind `HoodieFlinkRecord.getAvroBytes` call `getInt` on a field the row
-  holds as a short. `HoodieRowDataFileWriterFactory` writes only Parquet and Lance.
-* Clustering reads with the table schema (`int`), so it rewrites `bulk_insert`'s `INT(16)` files as plain INT32.
-
-Every path reads the column back as `int`. The production classes that decide what a SMALLINT becomes, each making
-part of the decision:
-
-Spark: schema conversion and row preparation
-
-1. `HoodieSparkSchemaConverters` (hudi-spark-client): maps `ByteType` / `ShortType` to INT, and INT back to
-   `IntegerType`.
-2. `HoodieInternalRowUtils` (hudi-spark-client): caches the `StructType` rebuilt from `HoodieSchema` that writers are
-   built with, and the row writer that rewrites short to int.
-3. `HoodieCreateRecordUtils` (hudi-spark-common): rewrites upsert and insert rows to that `StructType`, widening short
-   to int.
-4. `HoodieDatasetBulkInsertHelper` (hudi-spark-client): keeps the DataFrame's own `StructType` for `bulk_insert`.
-
-Spark: writer selection
-
-5. `HoodieSparkFileWriterFactory` (hudi-spark-client): rebuilds the `StructType` from `HoodieSchema` for Parquet,
-   Lance and Vortex; throws for ORC and HFile.
-6. `HoodieInternalRowFileWriterFactory` (hudi-spark-client): passes the DataFrame's `StructType` through; Parquet and
-   Lance only.
-
-Spark: format writers
-
-7. `HoodieRowParquetWriteSupport` (hudi-spark-client): `ShortType` to INT32 + `INT(16)` with `getShort`, `IntegerType`
-   to plain INT32, `ByteType` to `Unsupported type`.
-8. `HoodieSparkLanceWriter` (hudi-spark-client): hands its `StructType` to lance-spark.
-9. `LanceArrowUtils` (lance-spark): `ShortType` to Arrow `Int16`, `IntegerType` to `Int32`.
-10. `LanceArrowWriter` (lance-spark): writes the values into those vectors.
-11. `HoodieSparkVortexWriter` (hudi-spark-client, JDK 17 sources): writes from the rebuilt `StructType`.
-
-Spark: AVRO record type and Avro log blocks
-
-12. `HoodieSparkUtils` (hudi-spark-client): `createRdd` turns rows into `GenericRecord`s for the AVRO record type.
-13. `AvroConversionUtils` (hudi-spark-client): builds the row-to-Avro converter against the `HoodieSchema` Avro schema.
-14. `AvroSerializer` (four copies: hudi-spark3-common, hudi-spark4.0.x, hudi-spark4.1.x, hudi-spark4.2.x), reached
-    through `SparkAdapter.createAvroSerializer`: `ShortType` to Avro `int`.
-15. `HoodieSparkRecord` (hudi-spark-client): `getAvroBytes` for Avro log blocks under the SPARK record type.
-
-Shared Avro writers
-
-16. `HoodieAvroFileWriterFactory` (hudi-hadoop-common): Parquet, ORC and HFile; not Lance or Vortex.
-17. `HoodieAvroWriteSupport` (hudi-hadoop-common): the parquet-avro write support.
-18. `AvroSchemaConverterWithTimestampNTZ` (hudi-hadoop-common): Avro `int` to Parquet INT32.
-19. `AvroOrcUtils` (hudi-hadoop-common): Avro `int` to ORC `int`.
-
-Flink
-
-20. `HoodieSchemaConverter` (hudi-flink-client): maps `TINYINT` / `SMALLINT` to INT, and INT back to `INT`.
-21. `HoodieRowDataFileWriterFactory` (hudi-flink-client): Parquet and Lance only.
-22. `RowDataParquetWriteSupport` (hudi-flink-client): builds the file schema from `HoodieSchema`.
-23. `ParquetSchemaConverter` (hudi-flink-client): converts through a `RowType`, so plain INT32; its SMALLINT branch is
-    unreachable.
-24. `ParquetRowDataWriter` (hudi-flink-client): its `IntWriter` calls `getInt` on a field the row holds as a short.
-25. `HoodieFlinkLanceArrowUtils` (hudi-flink-client): converts through a `RowType`, so `Int32`; its SMALLINT branch is
-    unreachable.
-26. `LanceRowDataWriter` (hudi-flink-client): `getInt` on a short; its `SmallIntWriter` is unreachable.
-27. `HoodieFlinkRecord` (hudi-flink-client): `getAvroBytes` for Avro log blocks.
-28. `RowDataQueryContexts` (hudi-flink-client): builds the row-to-Avro converter from a `RowType` rebuilt from
-    `HoodieSchema`.
-29. `RowDataToAvroConverters` (hudi-flink-client): `getInt` on a short.
-
-Catalog
-
-30. `HiveSchemaUtil` (hudi-hive-sync): INT to `int`.
-
-That is 30 classes in nine Hudi modules plus lance-spark, three of them with unreachable SMALLINT branches, and the
-answer also depends on which `StructType` each Spark operation hands down. `TestParquetSchemaConverter` normalizes
-SMALLINT to INT before comparing, so the tests encode the loss.
-[apache/hudi#18974](https://github.com/apache/hudi/issues/18974) tracks it and names adding the type to `HoodieSchema`
-as the fix consistent with RFC-99.
-
-**With this design.**
-
-1. Write, (1) engine to `HoodieSchema`: `SparkTypeMapper` maps `ShortType`, and `FlinkTypeMapper` maps `SMALLINT`, to
-   INT16 (rule 5). The table schema persists it as Avro `int` with an `int16` logical-type property; older readers see
-   `int`.
-2. Every write operation builds the file schema from the table schema alone: `bulk_insert`, upsert, compaction and
-   clustering take the same path through `FileFormatIO`.
-3. Write, (2) `HoodieSchema` to format: `ParquetSchemaMapper` maps INT16 to INT32 + `INT(16)`, `ArrowSchemaMapper` to
-   `Int16`, `OrcSchemaMapper` to `short`. One case in each mapper.
-4. Values: each wrapper picks its getter from the engine's own field type, so `SparkRowWrapper.getInt` and
-   `FlinkRowWrapper.getInt` call `getShort` for this field, and the format's INT16 value writer calls `row.getInt(i)`.
-   No path calls `getInt` on a short.
-5. Read, (3) format to `HoodieSchema`: `ParquetSchemaMapper.fromPhysicalSchema` maps INT32 + `INT(16)` to INT16; plain
-   INT32 files written before INT16 resolve through the hint.
-6. Read, (4) `HoodieSchema` to engine and catalog: Spark gets `ShortType`, Flink `SMALLINT`, Hive sync `smallint`.
-
-Existing tables keep their INT columns as INT, since an INT in an old schema may be a real INT or a widened SMALLINT
-(#18974); every path then writes plain INT32 for them, `bulk_insert` included, because every path writes the table's
-type. Tables created after INT16 lands get INT16.
-
-"What is a SMALLINT on disk" then has one answer per format, in one place: the INT16 case of each `FormatSchemaMapper`,
-checked for every engine by the shared test kit with RFC-99's table as the expected output. The 30 classes above become
-one INT16 case in each of:
-
-1. `SparkTypeMapper`: `ShortType` to and from INT16.
-2. `FlinkTypeMapper`: `SMALLINT` to and from INT16.
-3. `HiveTypeMapper`: INT16 to `smallint`, used by `HiveCatalogRenderer`.
-4. `ParquetSchemaMapper`: INT16 to and from INT32 + `INT(16)`.
-5. `ArrowSchemaMapper`: INT16 to and from `Int16` (Lance, Vortex).
-6. `OrcSchemaMapper`: INT16 to and from `short`.
-7. `AvroSchemaMapper`: INT16 to Avro `int` with the `int16` property.
-8. `SparkRowWrapper` / `HoodieSparkRow` and `FlinkRowWrapper` / `HoodieFlinkRow`: `getShort` behind `getInt`, and back.
+the write wrappers; that is a follow-up.
 
 ### Relationship to other RFCs
 
-* **RFC-99** defines `HoodieSchema`, the type set and the interoperability table; this RFC implements the mapping
-  layer against that table and the types it left open.
-* **RFC-104** owns field ids, schema evolution and retiring `InternalSchema`. This RFC prepares for it: expressions and
-  filter type mapping move from `InternalSchema` types to `HoodieSchemaType`, and callers go through the mappers, so
-  once field ids live on `HoodieSchema` the remaining users of `InternalSchema` are its evolution history and id-based
-  projection. `SchemaTransformPlan` takes renames from field ids once they exist.
+* **RFC-99** defines `HoodieSchema`, the type set and the interoperability table.
+* **RFC-104** owns the type plane, field ids and schema evolution. Format readers and writers here take their physical
+  schema from its `FormatSchemaMapper`, and the shared tests use RFC-99's table as the expected result.
+  `SchemaTransformPlan` takes renames from field ids once they exist.
 * **RFC-115** (Spark DataFrame-native write path) and **RFC-87** (Avro elimination for the Flink writer) touch the same
   write paths; their writers become users of `FileFormatIO`.
 
 ## Rollout/Adoption Plan
 
-1. **Mappers.** Add `TypeSupport`, the mapper interfaces and the registry, with implementations that wrap today's
-   converters. No behaviour or on-disk change. Shared-test failures (INT16, UUID, DECIMAL, VECTOR) become the bug list.
-2. **Converge mappings.** First the missing types (INT8, INT16, CHAR and the remaining RFC-99 types) land in
-   `HoodieSchema` and every mapper. Then callers switch to the mappers, one path at a time; the duplicated converters
-   are deleted; repair moves into the format mappers; Trino takes its columns from `HoodieSchema`. A path keeps today's
-   converter, and its writer keeps the engine schema, until the types it relies on have landed, so no engine schema
-   accepted on master is rejected and no writer loses information it uses today.
-3. **`HoodieRow` with its first format.** Add `HoodieRow`, the Spark, Flink and Avro wrappers and read views, and ORC
+Both steps need only RFC-104's first type-plane step (`FormatSchemaMapper` over today's converters), not its type
+convergence.
+
+1. **`HoodieRow` with its first format.** Add `HoodieRow`, the Spark, Flink and Avro wrappers and read views, and ORC
    through `OrcFileFormatIO` (write and read). Spark and Flink gain ORC; there is no engine ORC path to regress.
-4. **One format at a time.** Avro and HFile log blocks (inline log format), then Parquet behind a benchmark against
+2. **One format at a time.** Avro and HFile log blocks (inline log format), then Parquet behind a benchmark against
    today's writers and readers (base files and native logs, the default path), then Lance and Vortex. Old writers and
    readers stay until their replacement lands; engine vectorized readers move behind `VectorizedFileReader` and engine
    native row readers stay as they are, neither rewritten. An engine and format pair whose benchmark regresses keeps its
    existing direct path.
-5. **Expressions**, independent of steps 3 and 4. Translators and renderers, then the index planner and lookups; Hive
-   gains data skipping.
 
 Each step ships on its own. No migration is needed for existing tables.
 
 ## Test Plan
 
-* **Mapper contract tests**: one abstract suite per mapper interface that every implementation extends; round-trips
-  every type x nullability x nesting x options; `support()` must match behaviour; RFC-99's interoperability table is the
-  expected output.
 * **Format contract tests**: every `FileFormatIO` with every engine wrapper writes and reads back every type; files
   written by different engines are byte-identical for the same rows.
 * **Cross-engine golden tables**: write with each engine, read with every other.
-* **Compatibility tests**: every engine schema master accepts (Spark `ByteType` / `ShortType` / CHAR / VARCHAR, Flink
-  TINYINT / SMALLINT / CHAR / VARCHAR / TIMESTAMP(0-6)) is still accepted after each rollout step, and tables written
-  by master read back with the same values and file layouts.
-* **Expression oracle**: for every engine, rows returned with pruning equal rows returned without it.
+* **Compatibility tests**: after each rollout step, tables written by master read back with the same values, and a
+  switched format writes the same file layouts as the writer it replaces.
 * **Benchmarks**: before each switch, per format and engine, against each existing direct writer and reader:
   throughput, CPU, allocated bytes per row, GC time, retained heap and off-heap memory, and bytes copied, on long
   strings, wide decimals, nanosecond timestamps, large nested rows and a mixed workload.
